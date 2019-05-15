@@ -1,5 +1,5 @@
 from __future__ import print_function
-
+import cv2
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -8,14 +8,13 @@ import torch.optim as optim
 from PIL import Image
 import matplotlib.pyplot as plt
 
-import torchvision.transforms as transforms
-import torchvision.models as models
+from torchvision import transforms, utils, models
 
 from loss_functions import StyleLoss, ContentLoss, Normalization
 
 import copy
 
-
+myname = "vangogh"
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # ===== Sample =====
@@ -36,9 +35,9 @@ def image_loader(image_name):
     return image.to(device, torch.float)
 
 
-style_img = image_loader("./data/nicholas-roerich.jpg")
+style_img = image_loader("/home/linardos/Documents/pPrivacy/data/{}.jpg".format(myname))
 #style_img = image_loader("./data/superrealism.jpg")
-content_img = image_loader("./data/dancing.jpg")
+content_img = image_loader("/home/linardos/Documents/pPrivacy/data/pp.jpeg")
 
 assert style_img.size() == content_img.size()
 
@@ -204,6 +203,7 @@ output = run_style_transfer(cnn, cnn_normalization_mean, cnn_normalization_std,
 
 plt.figure()
 imshow(output, title='Output Image')
+utils.save_image(output, "/home/linardos/Pictures/{}.png".format(myname))
 
 # sphinx_gallery_thumbnail_number = 4
 plt.ioff()
