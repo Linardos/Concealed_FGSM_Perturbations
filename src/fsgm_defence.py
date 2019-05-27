@@ -1,103 +1,34 @@
-# -*- coding: utf-8 -*-
-"""
-Adversarial Example Generation
-==============================
-
-**Author:** `Nathan Inkawhich <https://github.com/inkawhich>`__
-
-If you are reading this, hopefully you can appreciate how effective some
-machine learning models are. Research is constantly pushing ML models to
-be faster, more accurate, and more efficient. However, an often
-overlooked aspect of designing and training models is security and
-robustness, especially in the face of an adversary who wishes to fool
-the model.
-
-This tutorial will raise your awareness to the security vulnerabilities
-of ML models, and will give insight into the hot topic of adversarial
-machine learning. You may be surprised to find that adding imperceptible
-perturbations to an image *can* cause drastically different model
-performance. Given that this is a tutorial, we will explore the topic
-via example on an image classifier. Specifically we will use one of the
-first and most popular attack methods, the Fast Gradient Sign Attack
-(FGSM), to fool an MNIST classifier.
-
-"""
-
-
-######################################################################
-# Threat Model
-# ------------
-#
-# For context, there are many categories of adversarial attacks, each with
-# a different goal and assumption of the attacker’s knowledge. However, in
-# general the overarching goal is to add the least amount of perturbation
-# to the input data to cause the desired misclassification. There are
-# several kinds of assumptions of the attacker’s knowledge, two of which
-# are: **white-box** and **black-box**. A *white-box* attack assumes the
-# attacker has full knowledge and access to the model, including
-# architecture, inputs, outputs, and weights. A *black-box* attack assumes
-# the attacker only has access to the inputs and outputs of the model, and
-# knows nothing about the underlying architecture or weights. There are
-# also several types of goals, including **misclassification** and
-# **source/target misclassification**. A goal of *misclassification* means
-# the adversary only wants the output classification to be wrong but does
-# not care what the new classification is. A *source/target
-# misclassification* means the adversary wants to alter an image that is
-# originally of a specific source class so that it is classified as a
-# specific target class.
-#
-# In this case, the FGSM attack is a *white-box* attack with the goal of
-# *misclassification*. With this background information, we can now
-# discuss the attack in detail.
-#
-# Fast Gradient Sign Attack
-# -------------------------
-#
-# One of the first and most popular adversarial attacks to date is
-# referred to as the *Fast Gradient Sign Attack (FGSM)* and is described
-# by Goodfellow et. al. in `Explaining and Harnessing Adversarial
-# Examples <https://arxiv.org/abs/1412.6572>`__. The attack is remarkably
-# powerful, and yet intuitive. It is designed to attack neural networks by
-# leveraging the way they learn, *gradients*. The idea is simple, rather
-# than working to minimize the loss by adjusting the weights based on the
-# backpropagated gradients, the attack *adjusts the input data to maximize
-# the loss* based on the same backpropagated gradients. In other words,
-# the attack uses the gradient of the loss w.r.t the input data, then
-# adjusts the input data to maximize the loss.
-#
-# Before we jump into the code, let’s look at the famous
-# `FGSM <https://arxiv.org/abs/1412.6572>`__ panda example and extract
-# some notation.
-#
-# .. figure:: /_static/img/fgsm_panda_image.png
-#    :alt: fgsm_panda_image
-#
-# From the figure, :math:`\mathbf{x}` is the original input image
-# correctly classified as a “panda”, :math:`y` is the ground truth label
-# for :math:`\mathbf{x}`, :math:`\mathbf{\theta}` represents the model
-# parameters, and :math:`J(\mathbf{\theta}, \mathbf{x}, y)` is the loss
-# that is used to train the network. The attack backpropagates the
-# gradient back to the input data to calculate
-# :math:`\nabla_{x} J(\mathbf{\theta}, \mathbf{x}, y)`. Then, it adjusts
-# the input data by a small step (:math:`\epsilon` or :math:`0.007` in the
-# picture) in the direction (i.e.
-# :math:`sign(\nabla_{x} J(\mathbf{\theta}, \mathbf{x}, y))`) that will
-# maximize the loss. The resulting perturbed image, :math:`x'`, is then
-# *misclassified* by the target network as a “gibbon” when it is still
-# clearly a “panda”.
-#
-# Hopefully now the motivation for this tutorial is clear, so lets jump
-# into the implementation.
-#
-
 from __future__ import print_function
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torchvision import datasets, transforms
+from torchvision import datasets, transforms, models
 import numpy as np
 import matplotlib.pyplot as plt
+import os
+
+
+ROOT_PATH = "/home/linardos/Documents/pPrivacy"
+
+def load_weights(model, pt_model, device='cpu'):
+    # Load stored model:
+    temp = torch.load(pt_model, map_location=device)['state_dict']
+    # Because of dataparallel there is contradiction in the name of the keys so we need to remove part of the string in the keys:.
+    from collections import OrderedDict
+    checkpoint = OrderedDict()
+    for key in temp.keys():
+        new_key = key.replace("module.","")
+        checkpoint[new_key]=temp[key]
+
+    return checkpoint
+
+
+# ====================
+
+# modules = list(model.children())[:-1] # The last layer is not compatible.
+# print(checkpoint['state_dict'].keys())
+# print(model.state_dict().keys())
 
 
 ######################################################################
@@ -140,6 +71,10 @@ use_cuda=True
 # Model Under Attack
 # ~~~~~~~~~~~~~~~~~~
 #
+# ==================== Load model ==================== #
+
+
+
 # As mentioned, the model under attack is the same MNIST model from
 # `pytorch/examples/mnist <https://github.com/pytorch/examples/tree/master/mnist>`__.
 # You may train and save your own MNIST model or you can download and use
@@ -150,24 +85,6 @@ use_cuda=True
 #
 
 # LeNet Model definition
-class Net(nn.Module):
-    def __init__(self):
-        super(Net, self).__init__()
-        self.conv1 = nn.Conv2d(1, 10, kernel_size=5)
-        self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
-        self.conv2_drop = nn.Dropout2d()
-        self.fc1 = nn.Linear(320, 50)
-        self.fc2 = nn.Linear(50, 10)
-
-    def forward(self, x):
-        x = F.relu(F.max_pool2d(self.conv1(x), 2))
-        x = F.relu(F.max_pool2d(self.conv2_drop(self.conv2(x)), 2))
-        x = x.view(-1, 320)
-        x = F.relu(self.fc1(x))
-        x = F.dropout(x, training=self.training)
-        x = self.fc2(x)
-        return F.log_softmax(x, dim=1)
-
 # MNIST Test dataset and dataloader declaration
 test_loader = torch.utils.data.DataLoader(
     datasets.MNIST('../data', train=False, download=True, transform=transforms.Compose([
@@ -179,15 +96,15 @@ test_loader = torch.utils.data.DataLoader(
 print("CUDA Available: ",torch.cuda.is_available())
 device = torch.device("cuda" if (use_cuda and torch.cuda.is_available()) else "cpu")
 
-# Initialize the network
-model = Net().to(device)
-
-# Load the pretrained model
-model.load_state_dict(torch.load(pretrained_model, map_location='cpu'))
+# Initialize the network and load the weights
+model = models.resnet50(pretrained=False).to(device)
+model.fc = nn.Linear(2048, 365) # To be made compatible to 365 number of classes instead of the original 1000
+checkpoint = load_weights(model, "./models/resnet50_places365.pth.tar", device = device)
+model.load_state_dict(checkpoint)
 
 # Set the model in evaluation mode. In this case this is for the Dropout layers
 model.eval()
-
+exit()
 
 ######################################################################
 # FGSM Attack
