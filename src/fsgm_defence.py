@@ -1,3 +1,5 @@
+# Implementation of the attack. Note that the original code was borrowed from PyTorch tutorials and build upon for the purposes of this project.
+
 from __future__ import print_function
 import torch
 import torch.nn as nn
@@ -7,9 +9,12 @@ from torchvision import datasets, transforms, models
 import numpy as np
 import matplotlib.pyplot as plt
 import os
-
+import datasets
 
 ROOT_PATH = "/home/linardos/Documents/pPrivacy"
+PATH_TO_DATA = "../data/Places365/val_large"
+PATH_TO_LABELS = "../data/Places365/places365_val.txt"
+BATCH_SIZE = 1
 
 def load_weights(model, pt_model, device='cpu'):
     # Load stored model:
@@ -35,36 +40,22 @@ def load_weights(model, pt_model, device='cpu'):
 # Implementation
 # --------------
 #
-# In this section, we will discuss the input parameters for the tutorial,
-# define the model under attack, then code the attack and run some tests.
-#
 # Inputs
 # ~~~~~~
-#
-# There are only three inputs for this tutorial, and are defined as
-# follows:
 #
 # -  **epsilons** - List of epsilon values to use for the run. It is
 #    important to keep 0 in the list because it represents the model
 #    performance on the original test set. Also, intuitively we would
 #    expect the larger the epsilon, the more noticeable the perturbations
 #    but the more effective the attack in terms of degrading model
-#    accuracy. Since the data range here is :math:`[0,1]`, no epsilon
+#    accuracy. Since the data range here is `[0,1]`, no epsilon
 #    value should exceed 1.
 #
-# -  **pretrained_model** - path to the pretrained MNIST model which was
-#    trained with
-#    `pytorch/examples/mnist <https://github.com/pytorch/examples/tree/master/mnist>`__.
-#    For simplicity, download the pretrained model `here <https://drive.google.com/drive/folders/1fn83DF14tWmit0RTKWRhPq5uVXt73e0h?usp=sharing>`__.
-#
-# -  **use_cuda** - boolean flag to use CUDA if desired and available.
-#    Note, a GPU with CUDA is not critical for this tutorial as a CPU will
-#    not take much time.
-#
+
 
 epsilons = [0, .05, .1, .15, .2, .25, .3]
-pretrained_model = "../data/lenet_mnist_model.pth"
-use_cuda=True
+pretrained_model = "./models/resnet50_places365.pth.tar"
+use_cuda = True
 
 
 ######################################################################
@@ -72,39 +63,32 @@ use_cuda=True
 # ~~~~~~~~~~~~~~~~~~
 #
 # ==================== Load model ==================== #
-
-
-
-# As mentioned, the model under attack is the same MNIST model from
-# `pytorch/examples/mnist <https://github.com/pytorch/examples/tree/master/mnist>`__.
-# You may train and save your own MNIST model or you can download and use
-# the provided model. The *Net* definition and test dataloader here have
-# been copied from the MNIST example. The purpose of this section is to
-# define the model and dataloader, then initialize the model and load the
-# pretrained weights.
+# As mentioned, the model under attack is the ResNet model trained to recognize places.
+# The purpose of this section is to define the model and dataloader,
+# then initialize the model and load the pretrained weights.
 #
 
-# LeNet Model definition
-# MNIST Test dataset and dataloader declaration
+#  Test dataset and dataloader declaration
+dataset = datasets.Places365(path_to_data=PATH_TO_DATA, path_to_labels=PATH_TO_LABELS, list_IDs = os.listdir(PATH_TO_DATA))
 test_loader = torch.utils.data.DataLoader(
-    datasets.MNIST('../data', train=False, download=True, transform=transforms.Compose([
-            transforms.ToTensor(),
-            ])),
-        batch_size=1, shuffle=True)
+            dataset=dataset,
+            batch_size=BATCH_SIZE,
+            shuffle=True)
 
 # Define what device we are using
 print("CUDA Available: ",torch.cuda.is_available())
 device = torch.device("cuda" if (use_cuda and torch.cuda.is_available()) else "cpu")
 
 # Initialize the network and load the weights
-model = models.resnet50(pretrained=False).to(device)
+model = models.resnet50(pretrained=False)
 model.fc = nn.Linear(2048, 365) # To be made compatible to 365 number of classes instead of the original 1000
-checkpoint = load_weights(model, "./models/resnet50_places365.pth.tar", device = device)
+model.to(device)
+checkpoint = load_weights(model, pretrained_model, device = device)
 model.load_state_dict(checkpoint)
 
-# Set the model in evaluation mode. In this case this is for the Dropout layers
+# Set the model in evaluation mode. There is no training a model when training for a defence, instead you optimize the input.
 model.eval()
-exit()
+
 
 ######################################################################
 # FGSM Attack
@@ -112,16 +96,16 @@ exit()
 #
 # Now, we can define the function that creates the adversarial examples by
 # perturbing the original inputs. The ``fgsm_attack`` function takes three
-# inputs, *image* is the original clean image (:math:`x`), *epsilon* is
-# the pixel-wise perturbation amount (:math:`\epsilon`), and *data_grad*
+# inputs, *image* is the original clean image (`x`), *epsilon* is
+# the pixel-wise perturbation amount (`\epsilon`), and *data_grad*
 # is gradient of the loss w.r.t the input image
-# (:math:`\nabla_{x} J(\mathbf{\theta}, \mathbf{x}, y)`). The function
+# (`\nabla_{x} J(\mathbf{\theta}, \mathbf{x}, y)`). The function
 # then creates perturbed image as
 #
 # .. math:: perturbed\_image = image + epsilon*sign(data\_grad) = x + \epsilon * sign(\nabla_{x} J(\mathbf{\theta}, \mathbf{x}, y))
 #
 # Finally, in order to maintain the original range of the data, the
-# perturbed image is clipped to range :math:`[0,1]`.
+# perturbed image is clipped to range `[0,1]`.
 #
 
 # FGSM attack code
@@ -142,44 +126,48 @@ def fgsm_attack(image, epsilon, data_grad):
 #
 # Finally, the central result of this tutorial comes from the ``test``
 # function. Each call to this test function performs a full test step on
-# the MNIST test set and reports a final accuracy. However, notice that
+# the test set and reports a final accuracy. However, notice that
 # this function also takes an *epsilon* input. This is because the
 # ``test`` function reports the accuracy of a model that is under attack
-# from an adversary with strength :math:`\epsilon`. More specifically, for
+# from an adversary with strength `epsilon`. More specifically, for
 # each sample in the test set, the function computes the gradient of the
-# loss w.r.t the input data (:math:`data\_grad`), creates a perturbed
-# image with ``fgsm_attack`` (:math:`perturbed\_data`), then checks to see
+# loss w.r.t the input data (`data_grad`), creates a perturbed
+# image with ``fgsm_attack`` (`perturbed_data`), then checks to see
 # if the perturbed example is adversarial. In addition to testing the
 # accuracy of the model, the function also saves and returns some
 # successful adversarial examples to be visualized later.
 #
 
+
 def test( model, device, test_loader, epsilon ):
+
 
     # Accuracy counter
     correct = 0
     adv_examples = []
-
+    init_acc_count = 0
     # Loop over all examples in test set
     for data, target in test_loader:
 
         # Send the data and label to the device
         data, target = data.to(device), target.to(device)
-
         # Set requires_grad attribute of tensor. Important for Attack
         data.requires_grad = True
 
         # Forward pass the data through the model
         output = model(data)
         init_pred = output.max(1, keepdim=True)[1] # get the index of the max log-probability
-
+        # print(F.log_softmax(output, dim=1))
+        # target = torch.LongTensor([2]).to('cuda')
         # If the initial prediction is wrong, dont bother attacking, just move on
         if init_pred.item() != target.item():
+            init_acc_count+=1
             continue
+        # print(F.log_softmax(output, dim=1).exp()) #Gives one hot encoding
+
 
         # Calculate the loss
         loss = F.nll_loss(output, target)
-
         # Zero all existing gradients
         model.zero_grad()
 
@@ -211,8 +199,8 @@ def test( model, device, test_loader, epsilon ):
 
     # Calculate final accuracy for this epsilon
     final_acc = correct/float(len(test_loader))
+    print("Starting Accuracy: {}".format(init_acc_count/len(test_loader)))
     print("Epsilon: {}\tTest Accuracy = {} / {} = {}".format(epsilon, correct, len(test_loader), final_acc))
-
     # Return the accuracy and an adversarial example
     return final_acc, adv_examples
 
@@ -226,7 +214,7 @@ def test( model, device, test_loader, epsilon ):
 # For each epsilon we also save the final accuracy and some successful
 # adversarial examples to be plotted in the coming sections. Notice how
 # the printed accuracies decrease as the epsilon value increases. Also,
-# note the :math:`\epsilon=0` case represents the original test accuracy,
+# note the `\epsilon=0` case represents the original test accuracy,
 # with no attack.
 #
 
@@ -252,11 +240,11 @@ for eps in epsilons:
 # This is because larger epsilons mean we take a larger step in the
 # direction that will maximize the loss. Notice the trend in the curve is
 # not linear even though the epsilon values are linearly spaced. For
-# example, the accuracy at :math:`\epsilon=0.05` is only about 4% lower
-# than :math:`\epsilon=0`, but the accuracy at :math:`\epsilon=0.2` is 25%
-# lower than :math:`\epsilon=0.15`. Also, notice the accuracy of the model
+# example, the accuracy at `\epsilon=0.05` is only about 4% lower
+# than `\epsilon=0`, but the accuracy at `\epsilon=0.2` is 25%
+# lower than `\epsilon=0.15`. Also, notice the accuracy of the model
 # hits random accuracy for a 10-class classifier between
-# :math:`\epsilon=0.25` and :math:`\epsilon=0.3`.
+# `\epsilon=0.25` and `\epsilon=0.3`.
 #
 
 plt.figure(figsize=(5,5))
@@ -279,11 +267,11 @@ plt.show()
 # degredation and perceptibility that an attacker must consider. Here, we
 # show some examples of successful adversarial examples at each epsilon
 # value. Each row of the plot shows a different epsilon value. The first
-# row is the :math:`\epsilon=0` examples which represent the original
+# row is the `\epsilon=0` examples which represent the original
 # “clean” images with no perturbation. The title of each image shows the
 # “original classification -> adversarial classification.” Notice, the
-# perturbations start to become evident at :math:`\epsilon=0.15` and are
-# quite evident at :math:`\epsilon=0.3`. However, in all cases humans are
+# perturbations start to become evident at `\epsilon=0.15` and are
+# quite evident at `\epsilon=0.3`. However, in all cases humans are
 # still capable of identifying the correct class despite the added noise.
 #
 
@@ -303,20 +291,3 @@ for i in range(len(epsilons)):
         plt.imshow(ex, cmap="gray")
 plt.tight_layout()
 plt.show()
-
-
-######################################################################
-# Where to go next?
-# -----------------
-#
-# Hopefully this tutorial gives some insight into the topic of adversarial
-# machine learning. There are many potential directions to go from here.
-# This attack represents the very beginning of adversarial attack research
-# and since there have been many subsequent ideas for how to attack and
-# defend ML models from an adversary. In fact, at NIPS 2017 there was an
-# adversarial attack and defense competition and many of the methods used
-# in the competition are described in this paper: `Adversarial Attacks and
-# Defences Competition <https://arxiv.org/pdf/1804.00097.pdf>`__. The work
-# on defense also leads into the idea of making machine learning models
-# more *robust* in general, to both naturally perturbed and adversarially
-# crafted inputs.
