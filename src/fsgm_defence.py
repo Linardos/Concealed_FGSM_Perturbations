@@ -16,7 +16,7 @@ PATH_TO_DATA = "../data/Places365/val_large"
 PATH_TO_LABELS = "../data/Places365/places365_val.txt"
 BATCH_SIZE = 1
 
-def load_weights(model, pt_model, device='cpu'):
+def load_weights(pt_model, device='cpu'):
     # Load stored model:
     temp = torch.load(pt_model, map_location=device)['state_dict']
     # Because of dataparallel there is contradiction in the name of the keys so we need to remove part of the string in the keys:.
@@ -69,7 +69,14 @@ use_cuda = True
 #
 
 #  Test dataset and dataloader declaration
-dataset = datasets.Places365(path_to_data=PATH_TO_DATA, path_to_labels=PATH_TO_LABELS, list_IDs = os.listdir(PATH_TO_DATA))
+transforms = transforms.Compose([
+        # transforms.RandomSizedCrop(224),
+        # transforms.RandomHorizontalFlip(),
+        transforms.ToPILImage(), # Brings it to [0-1] range
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406],std=[0.229, 0.224, 0.225]) #  This are ImageNet's mean and std parameters. They tend to work for any collection of natural images.
+    ])
+dataset = datasets.Places365(path_to_data=PATH_TO_DATA, path_to_labels=PATH_TO_LABELS, list_IDs = os.listdir(PATH_TO_DATA), transform=transforms)
 test_loader = torch.utils.data.DataLoader(
             dataset=dataset,
             batch_size=BATCH_SIZE,
@@ -83,11 +90,14 @@ device = torch.device("cuda" if (use_cuda and torch.cuda.is_available()) else "c
 model = models.resnet50(pretrained=False)
 model.fc = nn.Linear(2048, 365) # To be made compatible to 365 number of classes instead of the original 1000
 model.to(device)
-checkpoint = load_weights(model, pretrained_model, device = device)
+checkpoint = load_weights(pretrained_model, device = device)
 model.load_state_dict(checkpoint)
 
 # Set the model in evaluation mode. There is no training a model when training for a defence, instead you optimize the input.
 model.eval()
+
+for child in model.children():
+    print(child)
 
 
 ######################################################################
@@ -145,9 +155,9 @@ def test( model, device, test_loader, epsilon ):
     # Accuracy counter
     correct = 0
     adv_examples = []
-    init_acc_count = 0
+    print("Initiating test with epsilon {}".format(epsilon))
     # Loop over all examples in test set
-    for data, target in test_loader:
+    for i, (data, target) in enumerate(test_loader):
 
         # Send the data and label to the device
         data, target = data.to(device), target.to(device)
@@ -156,12 +166,19 @@ def test( model, device, test_loader, epsilon ):
 
         # Forward pass the data through the model
         output = model(data)
-        init_pred = output.max(1, keepdim=True)[1] # get the index of the max log-probability
+        init_pred = F.softmax(output, dim=1)
+        init_pred = init_pred.max(1, keepdim=True)[1] # get the index of the max log-probability
+        print(target)
+        print(init_pred)
+        exit()
+        # print(init_pred)
+        # exit()
         # print(F.log_softmax(output, dim=1))
         # target = torch.LongTensor([2]).to('cuda')
         # If the initial prediction is wrong, dont bother attacking, just move on
+        if i == 100:
+            break
         if init_pred.item() != target.item():
-            init_acc_count+=1
             continue
         # print(F.log_softmax(output, dim=1).exp()) #Gives one hot encoding
 
@@ -197,10 +214,10 @@ def test( model, device, test_loader, epsilon ):
                 adv_ex = perturbed_data.squeeze().detach().cpu().numpy()
                 adv_examples.append( (init_pred.item(), final_pred.item(), adv_ex) )
 
+
     # Calculate final accuracy for this epsilon
     final_acc = correct/float(len(test_loader))
-    print("Starting Accuracy: {}".format(init_acc_count/len(test_loader)))
-    print("Epsilon: {}\tTest Accuracy = {} / {} = {}".format(epsilon, correct, len(test_loader), final_acc))
+    print("Epsilon: {}\tTest Accuracy = {} / {} = {}".format(epsilon, correct, 100, final_acc)) #replace 100 with len(test_loader)
     # Return the accuracy and an adversarial example
     return final_acc, adv_examples
 
@@ -247,14 +264,14 @@ for eps in epsilons:
 # `\epsilon=0.25` and `\epsilon=0.3`.
 #
 
-plt.figure(figsize=(5,5))
-plt.plot(epsilons, accuracies, "*-")
-plt.yticks(np.arange(0, 1.1, step=0.1))
-plt.xticks(np.arange(0, .35, step=0.05))
-plt.title("Accuracy vs Epsilon")
-plt.xlabel("Epsilon")
-plt.ylabel("Accuracy")
-plt.show()
+# plt.figure(figsize=(5,5))
+# plt.plot(epsilons, accuracies, "*-")
+# plt.yticks(np.arange(0, 1.1, step=0.1))
+# plt.xticks(np.arange(0, .35, step=0.05))
+# plt.title("Accuracy vs Epsilon")
+# plt.xlabel("Epsilon")
+# plt.ylabel("Accuracy")
+# plt.show()
 
 
 ######################################################################
@@ -275,19 +292,19 @@ plt.show()
 # still capable of identifying the correct class despite the added noise.
 #
 
-# Plot several examples of adversarial samples at each epsilon
-cnt = 0
-plt.figure(figsize=(8,10))
-for i in range(len(epsilons)):
-    for j in range(len(examples[i])):
-        cnt += 1
-        plt.subplot(len(epsilons),len(examples[0]),cnt)
-        plt.xticks([], [])
-        plt.yticks([], [])
-        if j == 0:
-            plt.ylabel("Eps: {}".format(epsilons[i]), fontsize=14)
-        orig,adv,ex = examples[i][j]
-        plt.title("{} -> {}".format(orig, adv))
-        plt.imshow(ex, cmap="gray")
-plt.tight_layout()
-plt.show()
+# # Plot several examples of adversarial samples at each epsilon
+# cnt = 0
+# plt.figure(figsize=(8,10))
+# for i in range(len(epsilons)):
+#     for j in range(len(examples[i])):
+#         cnt += 1
+#         plt.subplot(len(epsilons),len(examples[0]),cnt)
+#         plt.xticks([], [])
+#         plt.yticks([], [])
+#         if j == 0:
+#             plt.ylabel("Eps: {}".format(epsilons[i]), fontsize=14)
+#         orig,adv,ex = examples[i][j]
+#         plt.title("{} -> {}".format(orig, adv))
+#         plt.imshow(ex, cmap="gray")
+# plt.tight_layout()
+# plt.show()
