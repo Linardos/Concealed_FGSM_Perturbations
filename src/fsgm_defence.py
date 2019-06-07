@@ -15,6 +15,7 @@ ROOT_PATH = "/home/linardos/Documents/pPrivacy"
 PATH_TO_DATA = "../data/Places365/val_large"
 PATH_TO_LABELS = "../data/Places365/places365_val.txt"
 BATCH_SIZE = 1
+test_number = 1000
 
 def load_weights(pt_model, device='cpu'):
     # Load stored model:
@@ -70,11 +71,9 @@ use_cuda = True
 
 #  Test dataset and dataloader declaration
 transforms = transforms.Compose([
-        # transforms.RandomSizedCrop(224),
-        # transforms.RandomHorizontalFlip(),
-        transforms.ToPILImage(), # Brings it to [0-1] range
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406],std=[0.229, 0.224, 0.225]) #  This are ImageNet's mean and std parameters. They tend to work for any collection of natural images.
+        transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                             std=[0.229, 0.224, 0.225])
     ])
 dataset = datasets.Places365(path_to_data=PATH_TO_DATA, path_to_labels=PATH_TO_LABELS, list_IDs = os.listdir(PATH_TO_DATA), transform=transforms)
 test_loader = torch.utils.data.DataLoader(
@@ -168,15 +167,15 @@ def test( model, device, test_loader, epsilon ):
         output = model(data)
         init_pred = F.softmax(output, dim=1)
         init_pred = init_pred.max(1, keepdim=True)[1] # get the index of the max log-probability
-        print(target)
-        print(init_pred)
-        exit()
+        #print(target)
+        #print(init_pred)
+        # exit()
         # print(init_pred)
         # exit()
         # print(F.log_softmax(output, dim=1))
         # target = torch.LongTensor([2]).to('cuda')
         # If the initial prediction is wrong, dont bother attacking, just move on
-        if i == 100:
+        if i == test_number:
             break
         if init_pred.item() != target.item():
             continue
@@ -201,7 +200,7 @@ def test( model, device, test_loader, epsilon ):
         output = model(perturbed_data)
 
         # Check for success
-        final_pred = output.max(1, keepdim=True)[1] # get the index of the max log-probability
+        final_pred = F.softmax(output, dim=1).max(1, keepdim=True)[1] # get the index of the max log-probability
         if final_pred.item() == target.item():
             correct += 1
             # Special case for saving 0 epsilon examples
@@ -216,8 +215,8 @@ def test( model, device, test_loader, epsilon ):
 
 
     # Calculate final accuracy for this epsilon
-    final_acc = correct/float(len(test_loader))
-    print("Epsilon: {}\tTest Accuracy = {} / {} = {}".format(epsilon, correct, 100, final_acc)) #replace 100 with len(test_loader)
+    final_acc = correct/float(test_number)
+    print("Epsilon: {}\tTest Accuracy = {} / {} = {}".format(epsilon, correct, test_number, final_acc)) #replace 100 with len(test_loader)
     # Return the accuracy and an adversarial example
     return final_acc, adv_examples
 
