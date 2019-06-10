@@ -35,7 +35,7 @@ class Places365(data.Dataset):
         X = X.convert('RGB')
         # print(X)
         if self.resolution!=None:
-             X = X.resize(self.resolution)
+            X = X.resize(self.resolution)
         # deep learning networks traditionally share many parameters - if you didn't scale your inputs in a way that resulted in similarly-ranged feature values (ie: over the whole dataset by subtracting mean) sharing wouldn't happen very easily because to one part of the image weight w is a lot and to another it's too small.
         # print(X)
         if self.transform:

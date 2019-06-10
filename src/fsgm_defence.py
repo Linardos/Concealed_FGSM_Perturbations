@@ -5,10 +5,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torchvision import datasets, transforms, models
+from torchvision import datasets, transforms, models, utils
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+import cv2
 import datasets
 
 ROOT_PATH = "/home/linardos/Documents/pPrivacy"
@@ -54,7 +55,7 @@ def load_weights(pt_model, device='cpu'):
 #
 
 
-epsilons = [0, .05, .1, .15, .2, .25, .3]
+epsilons = [0, .05, .1]#, .15] #, .2, .25, .3]
 pretrained_model = "./models/resnet50_places365.pth.tar"
 use_cuda = True
 
@@ -122,11 +123,24 @@ def fgsm_attack(image, epsilon, data_grad):
     # Collect the element-wise sign of the data gradient
     sign_data_grad = data_grad.sign()
     # Create the perturbed image by adjusting each pixel of the input image
-    perturbed_image = image + epsilon*sign_data_grad
+    print(type(image))
+    rmap = get_reverse_saliency(image)
+    perturbed_image = image + epsilon*sign_data_grad*rmap
     # Adding clipping to maintain [0,1] range
-    perturbed_image = torch.clamp(perturbed_image, 0, 1)
+    perturbed_image = torch.clamp(perturbed_image, -2, 2) # Changed to 95% confidence interval
     # Return the perturbed image
     return perturbed_image
+######################################################################
+# Saliency
+# ~~~~~~~~~~~
+#
+
+def get_reverse_saliency(img):
+    from salient_bluring.saliency_map_generation import infer_smap, SalBCE
+    from torchvision import transforms
+    _, reverse_map = infer_smap.map(img=img, weights="./salient_bluring/saliency_map_generation/salgan_salicon.pt", model=SalBCE.SalGAN(), dir_to_save="./adv_example", device=device)
+    return reverse_map
+
 
 
 ######################################################################
@@ -153,6 +167,7 @@ def test( model, device, test_loader, epsilon ):
 
     # Accuracy counter
     correct = 0
+    wrong_counter = 0
     adv_examples = []
     print("Initiating test with epsilon {}".format(epsilon))
     # Loop over all examples in test set
@@ -205,17 +220,22 @@ def test( model, device, test_loader, epsilon ):
             correct += 1
             # Special case for saving 0 epsilon examples
             if (epsilon == 0) and (len(adv_examples) < 5):
-                adv_ex = perturbed_data.squeeze().detach().cpu().numpy()
-                adv_examples.append( (init_pred.item(), final_pred.item(), adv_ex) )
+                original_ex = data.squeeze().detach().cpu()#.numpy()
+                adv_ex = perturbed_data.squeeze().detach().cpu()#.numpy()
+                adv_examples.append( (original_ex, adv_ex) )
         else:
             # Save some adv examples for visualization later
+            # print("got some")
             if len(adv_examples) < 5:
-                adv_ex = perturbed_data.squeeze().detach().cpu().numpy()
-                adv_examples.append( (init_pred.item(), final_pred.item(), adv_ex) )
+
+                original_ex = data.squeeze().detach().cpu()#.numpy()
+                adv_ex = perturbed_data.squeeze().detach().cpu()#.numpy()
+                adv_examples.append( (original_ex, adv_ex) )
 
 
     # Calculate final accuracy for this epsilon
     final_acc = correct/float(test_number)
+    # print("Wrong percentage: {}".format(wrong_counter/test_number))
     print("Epsilon: {}\tTest Accuracy = {} / {} = {}".format(epsilon, correct, test_number, final_acc)) #replace 100 with len(test_loader)
     # Return the accuracy and an adversarial example
     return final_acc, adv_examples
@@ -263,14 +283,14 @@ for eps in epsilons:
 # `\epsilon=0.25` and `\epsilon=0.3`.
 #
 
-# plt.figure(figsize=(5,5))
-# plt.plot(epsilons, accuracies, "*-")
-# plt.yticks(np.arange(0, 1.1, step=0.1))
-# plt.xticks(np.arange(0, .35, step=0.05))
-# plt.title("Accuracy vs Epsilon")
-# plt.xlabel("Epsilon")
-# plt.ylabel("Accuracy")
-# plt.show()
+plt.figure(figsize=(5,5))
+plt.plot(epsilons, accuracies, "*-")
+plt.yticks(np.arange(0, 1.1, step=0.1))
+plt.xticks(np.arange(0, epsilons[-1], step=0.05))
+plt.title("Accuracy vs Epsilon")
+plt.xlabel("Epsilon")
+plt.ylabel("Accuracy")
+plt.show()
 
 
 ######################################################################
@@ -292,18 +312,22 @@ for eps in epsilons:
 #
 
 # # Plot several examples of adversarial samples at each epsilon
-# cnt = 0
-# plt.figure(figsize=(8,10))
-# for i in range(len(epsilons)):
-#     for j in range(len(examples[i])):
+cnt = 0
+plt.figure(figsize=(8,10))
+for i in range(len(epsilons)):
+    for j in range(len(examples[i])):
+        orig,ex = examples[i][j]
+        utils.save_image(orig, "./adv_example/original{}.png".format(j))
+        utils.save_image(ex, "./adv_example/example{}.png".format(j))
+
 #         cnt += 1
 #         plt.subplot(len(epsilons),len(examples[0]),cnt)
 #         plt.xticks([], [])
 #         plt.yticks([], [])
 #         if j == 0:
 #             plt.ylabel("Eps: {}".format(epsilons[i]), fontsize=14)
-#         orig,adv,ex = examples[i][j]
 #         plt.title("{} -> {}".format(orig, adv))
 #         plt.imshow(ex, cmap="gray")
 # plt.tight_layout()
 # plt.show()
+
