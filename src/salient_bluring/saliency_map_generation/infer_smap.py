@@ -7,7 +7,7 @@ import torch
 from torchvision import transforms, utils
 from torch.autograd import Variable
 
-def map(img, weights, model, device, dir_to_save=False):
+def map(img, weights, model, device='cuda', dir_to_save=False):
     frame_size = (192, 256)
     if device == 'cuda':
         dtype = torch.cuda.FloatTensor
@@ -21,11 +21,11 @@ def map(img, weights, model, device, dir_to_save=False):
         img = Variable(img.type(dtype).transpose(0,1), requires_grad=False)
         img = img.unsqueeze(0).transpose(1,3)
 
-    print(img.size())
+    # print(img.size())
 
     model.to(device)
     model.salgan.load_state_dict(torch.load(weights, map_location=device)['state_dict'])
-    saliency_map = model.forward(input_ = img)
+    saliency_map = model.forward(input_ = img*255) # THE SALIENCY MODEL IS TRAINED ON 0-255 SCALE
     saliency_map = saliency_map
 
     post_process_saliency_map = (saliency_map-torch.min(saliency_map))/(torch.max(saliency_map)-torch.min(saliency_map))
@@ -34,7 +34,7 @@ def map(img, weights, model, device, dir_to_save=False):
 
     reverse_smap = torch.ones(post_process_saliency_map.size()).to(device)
     reverse_smap -= post_process_saliency_map
-    print(reverse_smap.size())
+    # print(reverse_smap.size())
     if dir_to_save:
         utils.save_image(reverse_smap, os.path.join(dir_to_save, "reverse_saliency_map.png"))
 

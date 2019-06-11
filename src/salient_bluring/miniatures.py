@@ -100,7 +100,7 @@ if __name__ == '__main__':
 
     from saliency_map_generation import infer_smap, SalBCE
     from torchvision import transforms
-    infer_smap.map(img=sys.argv[1], weights="./saliency_map_generation/salgan_salicon.pt", model=SalBCE.SalGAN())
+    infer_smap.map(img=sys.argv[1], weights="./saliency_map_generation/salgan_salicon.pt", model=SalBCE.SalGAN(), dir_to_save=".")
 
     x = createMiniature(Image.open(sys.argv[1]), [], custom_mask=Image.open("./reverse_saliency_map.png"))
     scipy.misc.imsave(output_name, x)

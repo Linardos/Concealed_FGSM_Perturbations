@@ -11,12 +11,20 @@ import matplotlib.pyplot as plt
 import os
 import cv2
 import datasets
+import datetime
 
 ROOT_PATH = "/home/linardos/Documents/pPrivacy"
 PATH_TO_DATA = "../data/Places365/val_large"
 PATH_TO_LABELS = "../data/Places365/places365_val.txt"
 BATCH_SIZE = 1
-test_number = 1000
+TEST_NUMBER = 100 #
+
+
+######################################################################
+# Utility functions
+# --------------
+def minmax_normalization(X):
+    return (X-X.min())/(X.max()-X.min())
 
 def load_weights(pt_model, device='cpu'):
     # Load stored model:
@@ -123,9 +131,12 @@ def fgsm_attack(image, epsilon, data_grad):
     # Collect the element-wise sign of the data gradient
     sign_data_grad = data_grad.sign()
     # Create the perturbed image by adjusting each pixel of the input image
-    print(type(image))
+    # print(type(image))
     rmap = get_reverse_saliency(image)
     perturbed_image = image + epsilon*sign_data_grad*rmap
+    if epsilon > 0 :
+        utils.save_image(minmax_normalization(image), os.path.join("./adv_example", "unperturbed.png"))
+        utils.save_image(minmax_normalization(perturbed_image), os.path.join("./adv_example", "perturbed.png"))
     # Adding clipping to maintain [0,1] range
     perturbed_image = torch.clamp(perturbed_image, -2, 2) # Changed to 95% confidence interval
     # Return the perturbed image
@@ -138,7 +149,7 @@ def fgsm_attack(image, epsilon, data_grad):
 def get_reverse_saliency(img):
     from salient_bluring.saliency_map_generation import infer_smap, SalBCE
     from torchvision import transforms
-    _, reverse_map = infer_smap.map(img=img, weights="./salient_bluring/saliency_map_generation/salgan_salicon.pt", model=SalBCE.SalGAN(), dir_to_save="./adv_example", device=device)
+    _, reverse_map = infer_smap.map(img=img, weights="./salient_bluring/saliency_map_generation/salgan_salicon.pt", model=SalBCE.SalGAN(), device=device)
     return reverse_map
 
 
@@ -164,6 +175,7 @@ def get_reverse_saliency(img):
 
 def test( model, device, test_loader, epsilon ):
 
+    start = datetime.datetime.now().replace(microsecond=0)
 
     # Accuracy counter
     correct = 0
@@ -190,7 +202,7 @@ def test( model, device, test_loader, epsilon ):
         # print(F.log_softmax(output, dim=1))
         # target = torch.LongTensor([2]).to('cuda')
         # If the initial prediction is wrong, dont bother attacking, just move on
-        if i == test_number:
+        if i == TEST_NUMBER:
             break
         if init_pred.item() != target.item():
             continue
@@ -234,10 +246,13 @@ def test( model, device, test_loader, epsilon ):
 
 
     # Calculate final accuracy for this epsilon
-    final_acc = correct/float(test_number)
-    # print("Wrong percentage: {}".format(wrong_counter/test_number))
-    print("Epsilon: {}\tTest Accuracy = {} / {} = {}".format(epsilon, correct, test_number, final_acc)) #replace 100 with len(test_loader)
+    final_acc = correct/float(TEST_NUMBER)
+    # print("Wrong percentage: {}".format(wrong_counter/TEST_NUMBER))
     # Return the accuracy and an adversarial example
+    end = datetime.datetime.now().replace(microsecond=0)
+
+    print("Epsilon: {}\tTest Accuracy = {} / {} = {}\t Time elapsed: {}".format(epsilon, correct, TEST_NUMBER, final_acc, end-start)) #replace TEST_NUMBER with len(test_loader) when done with testing
+
     return final_acc, adv_examples
 
 
@@ -317,8 +332,9 @@ plt.figure(figsize=(8,10))
 for i in range(len(epsilons)):
     for j in range(len(examples[i])):
         orig,ex = examples[i][j]
-        utils.save_image(orig, "./adv_example/original{}.png".format(j))
-        utils.save_image(ex, "./adv_example/example{}.png".format(j))
+
+        utils.save_image(minmax_normalization(orig), "./adv_example/original{}.png".format(j))
+        utils.save_image(minmax_normalization(ex), "./adv_example/example{}.png".format(j))
 
 #         cnt += 1
 #         plt.subplot(len(epsilons),len(examples[0]),cnt)
