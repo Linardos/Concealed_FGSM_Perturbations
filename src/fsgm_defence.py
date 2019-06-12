@@ -12,13 +12,17 @@ import os
 import cv2
 import datasets
 import datetime
+from salient_bluring import miniatures
+from salient_bluring.saliency_map_generation import infer_smap, SalBCE
+from PIL import Image
+
 
 ROOT_PATH = "/home/linardos/Documents/pPrivacy"
 PATH_TO_DATA = "../data/Places365/val_large"
 PATH_TO_LABELS = "../data/Places365/places365_val.txt"
 BATCH_SIZE = 1
 TEST_NUMBER = 100 #
-
+BLURRING = True
 
 ######################################################################
 # Utility functions
@@ -63,7 +67,7 @@ def load_weights(pt_model, device='cpu'):
 #
 
 
-epsilons = [0, .05, .1]#, .15] #, .2, .25, .3]
+epsilons = [0, .01, .025, .05]#, .15] #, .2, .25, .3]
 pretrained_model = "./models/resnet50_places365.pth.tar"
 use_cuda = True
 
@@ -79,12 +83,12 @@ use_cuda = True
 #
 
 #  Test dataset and dataloader declaration
-transforms = transforms.Compose([
+transform_pipeline = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406],
                              std=[0.229, 0.224, 0.225])
     ])
-dataset = datasets.Places365(path_to_data=PATH_TO_DATA, path_to_labels=PATH_TO_LABELS, list_IDs = os.listdir(PATH_TO_DATA), transform=transforms)
+dataset = datasets.Places365(path_to_data=PATH_TO_DATA, path_to_labels=PATH_TO_LABELS, list_IDs = os.listdir(PATH_TO_DATA), transform=transform_pipeline)
 test_loader = torch.utils.data.DataLoader(
             dataset=dataset,
             batch_size=BATCH_SIZE,
@@ -127,31 +131,43 @@ for child in model.children():
 #
 
 # FGSM attack code
-def fgsm_attack(image, epsilon, data_grad):
+def fgsm_attack(image, epsilon, data_grad, device):
     # Collect the element-wise sign of the data gradient
     sign_data_grad = data_grad.sign()
     # Create the perturbed image by adjusting each pixel of the input image
     # print(type(image))
-    rmap = get_reverse_saliency(image)
+    rmap = get_reverse_saliency(image) #Multiply by the reverse saliency map to mitigate perturbation on salient parts.
     perturbed_image = image + epsilon*sign_data_grad*rmap
-    if epsilon > 0 :
-        utils.save_image(minmax_normalization(image), os.path.join("./adv_example", "unperturbed.png"))
-        utils.save_image(minmax_normalization(perturbed_image), os.path.join("./adv_example", "perturbed.png"))
-    # Adding clipping to maintain [0,1] range
-    perturbed_image = torch.clamp(perturbed_image, -2, 2) # Changed to 95% confidence interval
+
+    utils.save_image(minmax_normalization(rmap), os.path.join("./adv_example", "rmap.png"))
+    utils.save_image(minmax_normalization(perturbed_image), os.path.join("./adv_example", "perturbed.png"))
+    # perturbed_image = torch.clamp(perturbed_image, -2, 2) # Changed to 95% confidence interval
     # Return the perturbed image
-    return perturbed_image
+
+    if BLURRING:
+        perturbed_image = tiltshift(os.path.join("./adv_example", "perturbed.png"), os.path.join("./adv_example", "rmap.png"))
+        perturbed_image = perturbed_image.convert('RGB') # important to add, By default PIL is agnostic about color spaces: https://stackoverflow.com/questions/50622180/does-pil-image-convertrgb-converts-images-to-srgb-or-adobergb/50623824
+        perturbed_image = transform_pipeline(perturbed_image)
+        perturbed_image = perturbed_image.unsqueeze(0)
+        perturbed_image = perturbed_image.to(device)
+        utils.save_image(minmax_normalization(perturbed_image), os.path.join("./adv_example", "blurred.png"))
+    # to_pil = transforms.ToPILImage()
+    # to_tensor = transforms.ToTensor()
+    # perturbed_image = to_tensor(tiltshift(to_pil(perturbed_image.squeeze()))).unsqueeze()
+
+    return perturbed_image, rmap
 ######################################################################
-# Saliency
+# Saliency & Blur
 # ~~~~~~~~~~~
 #
 
 def get_reverse_saliency(img):
-    from salient_bluring.saliency_map_generation import infer_smap, SalBCE
-    from torchvision import transforms
     _, reverse_map = infer_smap.map(img=img, weights="./salient_bluring/saliency_map_generation/salgan_salicon.pt", model=SalBCE.SalGAN(), device=device)
     return reverse_map
 
+def tiltshift(img_path, rmap_path):
+    x = miniatures.createMiniature(Image.open(img_path), [], custom_mask=Image.open(rmap_path))
+    return x
 
 
 ######################################################################
@@ -181,7 +197,7 @@ def test( model, device, test_loader, epsilon ):
     correct = 0
     wrong_counter = 0
     adv_examples = []
-    print("Initiating test with epsilon {}".format(epsilon))
+    print("Initiating test with epsilon {} and blurring set to {}".format(epsilon, BLURRING))
     # Loop over all examples in test set
     for i, (data, target) in enumerate(test_loader):
 
@@ -221,7 +237,7 @@ def test( model, device, test_loader, epsilon ):
         data_grad = data.grad.data
 
         # Call FGSM Attack
-        perturbed_data = fgsm_attack(data, epsilon, data_grad)
+        perturbed_data, rmap = fgsm_attack(data, epsilon, data_grad, device)
 
         # Re-classify the perturbed image
         output = model(perturbed_data)
@@ -234,7 +250,8 @@ def test( model, device, test_loader, epsilon ):
             if (epsilon == 0) and (len(adv_examples) < 5):
                 original_ex = data.squeeze().detach().cpu()#.numpy()
                 adv_ex = perturbed_data.squeeze().detach().cpu()#.numpy()
-                adv_examples.append( (original_ex, adv_ex) )
+                rmap = rmap.squeeze().detach().cpu()#.numpy()
+                adv_examples.append( (original_ex, adv_ex, rmap) )
         else:
             # Save some adv examples for visualization later
             # print("got some")
@@ -242,7 +259,8 @@ def test( model, device, test_loader, epsilon ):
 
                 original_ex = data.squeeze().detach().cpu()#.numpy()
                 adv_ex = perturbed_data.squeeze().detach().cpu()#.numpy()
-                adv_examples.append( (original_ex, adv_ex) )
+                rmap = rmap.squeeze().detach().cpu()#.numpy()
+                adv_examples.append( (original_ex, adv_ex, rmap) )
 
 
     # Calculate final accuracy for this epsilon
@@ -301,11 +319,12 @@ for eps in epsilons:
 plt.figure(figsize=(5,5))
 plt.plot(epsilons, accuracies, "*-")
 plt.yticks(np.arange(0, 1.1, step=0.1))
-plt.xticks(np.arange(0, epsilons[-1], step=0.05))
+plt.xticks(np.arange(0, epsilons[-1], step=.005))
 plt.title("Accuracy vs Epsilon")
 plt.xlabel("Epsilon")
 plt.ylabel("Accuracy")
-plt.show()
+plt.savefig("Epsilons.png")
+# plt.show()
 
 
 ######################################################################
@@ -327,14 +346,15 @@ plt.show()
 #
 
 # # Plot several examples of adversarial samples at each epsilon
-cnt = 0
-plt.figure(figsize=(8,10))
+# cnt = 0
+# plt.figure(figsize=(8,10))
 for i in range(len(epsilons)):
     for j in range(len(examples[i])):
-        orig,ex = examples[i][j]
+        orig, ex, rmap = examples[i][j]
 
-        utils.save_image(minmax_normalization(orig), "./adv_example/original{}.png".format(j))
-        utils.save_image(minmax_normalization(ex), "./adv_example/example{}.png".format(j))
+        utils.save_image(minmax_normalization(orig), "./adv_example/original_e{}.png".format(epsilons[i]))
+        utils.save_image(minmax_normalization(ex), "./adv_example/example_e{}.png".format(epsilons[i]))
+        utils.save_image(minmax_normalization(rmap), "./adv_example/rsmap_e{}.png".format(epsilons[i]))
 
 #         cnt += 1
 #         plt.subplot(len(epsilons),len(examples[0]),cnt)
@@ -345,5 +365,6 @@ for i in range(len(epsilons)):
 #         plt.title("{} -> {}".format(orig, adv))
 #         plt.imshow(ex, cmap="gray")
 # plt.tight_layout()
+# plt.savefig("QAnal.png")
 # plt.show()
 

@@ -103,7 +103,7 @@ if __name__ == '__main__':
     infer_smap.map(img=sys.argv[1], weights="./saliency_map_generation/salgan_salicon.pt", model=SalBCE.SalGAN(), dir_to_save=".")
 
     x = createMiniature(Image.open(sys.argv[1]), [], custom_mask=Image.open("./reverse_saliency_map.png"))
-    scipy.misc.imsave(output_name, x)
+    # scipy.misc.imsave(output_name, x) # Needs fixing. Colors come out weird
 
     print ("Image is saved in the directory as {}!".format(output_name))
 
