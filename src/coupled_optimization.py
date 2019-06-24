@@ -10,11 +10,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import cv2
+import copy
 import datasets
 import datetime
-from salient_bluring import miniatures
-from salient_bluring.saliency_map_generation import infer_smap, SalBCE
+from NIMA.model import NIMA, NIMA2, emd_loss
 from PIL import Image
+from collections import OrderedDict
 
 torch.manual_seed(20)
 
@@ -23,7 +24,6 @@ PATH_TO_DATA = "../data/Places365/val_large"
 PATH_TO_LABELS = "../data/Places365/places365_val.txt"
 BATCH_SIZE = 1
 TEST_NUMBER = 100 #
-BLURRING = True
 
 ######################################################################
 # Utility functions
@@ -44,13 +44,6 @@ def load_weights(pt_model, device='cpu'):
     return checkpoint
 
 
-# ====================
-
-# modules = list(model.children())[:-1] # The last layer is not compatible.
-# print(checkpoint['state_dict'].keys())
-# print(model.state_dict().keys())
-
-
 ######################################################################
 # Implementation
 # --------------
@@ -68,7 +61,7 @@ def load_weights(pt_model, device='cpu'):
 #
 
 
-epsilons = [.05, .0625, .075] #, .2, .25, .3]
+epsilons = [0, .01, .025, .05] #, .2, .25, .3]
 pretrained_model = "./models/resnet50_places365.pth.tar"
 use_cuda = True
 
@@ -77,8 +70,7 @@ use_cuda = True
 # Model Under Attack
 # ~~~~~~~~~~~~~~~~~~
 #
-# ==================== Load model ==================== #
-# As mentioned, the model under attack is the ResNet model trained to recognize places.
+# The model under attack is the ResNet model trained to recognize places.
 # The purpose of this section is to define the model and dataloader,
 # then initialize the model and load the pretrained weights.
 #
@@ -99,19 +91,32 @@ test_loader = torch.utils.data.DataLoader(
 print("CUDA Available: ",torch.cuda.is_available())
 device = torch.device("cuda" if (use_cuda and torch.cuda.is_available()) else "cpu")
 
+
 # Initialize the network and load the weights
-model = models.resnet50(pretrained=False)
-model.fc = nn.Linear(2048, 365) # To be made compatible to 365 number of classes instead of the original 1000
-model.to(device)
+attack_model = models.resnet50(pretrained=False)
+attack_model.fc = nn.Linear(2048, 365) # To be made compatible to 365 number of classes instead of the original 1000
+attack_model.to(device)
 checkpoint = load_weights(pretrained_model, device = device)
-model.load_state_dict(checkpoint)
+attack_model.load_state_dict(checkpoint)
 
-# Set the model in evaluation mode. There is no training a model when training for a defence, instead you optimize the input.
-model.eval()
+# Set the attack_model in evaluation mode. There is no training of attack_model when setting up a defence, instead you optimize the input.
+attack_model.eval()
 
-for child in model.children():
-    print(child)
 
+# Aesthetics Model
+# ~~~~~~~~~~~~~~~~~~
+
+# for child in aesthetics_model.children():
+#     print(child)
+base_model = models.vgg16(pretrained=False)
+# old_model = NIMA(base_model)
+# old_model.load_state_dict(torch.load("./NIMA/epoch-12.pkl"))
+
+aesthetics_model = NIMA2(base_model)
+aesthetics_model.load_state_dict(torch.load("./NIMA/epoch-12.pkl"))
+
+aesthetics_model.to(device)
+aesthetics_model.eval()
 
 ######################################################################
 # FGSM Attack
@@ -137,43 +142,18 @@ def fgsm_attack(image, epsilon, data_grad, device):
     sign_data_grad = data_grad.sign()
     # Create the perturbed image by adjusting each pixel of the input image
     # print(type(image))
-    rmap = get_reverse_saliency(image) #Multiply by the reverse saliency map to mitigate perturbation on salient parts.
-    perturbed_image = image + epsilon*sign_data_grad*rmap
+    perturbed_image = image + epsilon*sign_data_grad
 
-    utils.save_image(minmax_normalization(rmap), os.path.join("./adv_example", "rmap.png"))
     utils.save_image(minmax_normalization(perturbed_image), os.path.join("./adv_example", "perturbed.png"))
     utils.save_image(minmax_normalization(image), os.path.join("./adv_example", "original.png"))
     # perturbed_image = torch.clamp(perturbed_image, -2, 2) # Changed to 95% confidence interval
     # Return the perturbed image
-    if BLURRING:
-        perturbed_image = tiltshift(os.path.join("./adv_example", "perturbed.png"), os.path.join("./adv_example", "rmap.png"))
-        perturbed_image = perturbed_image.convert('RGB') # important to add, By default PIL is agnostic about color spaces: https://stackoverflow.com/questions/50622180/does-pil-image-convertrgb-converts-images-to-srgb-or-adobergb/50623824
-        perturbed_image = transform_pipeline(perturbed_image)
-        perturbed_image = perturbed_image.unsqueeze(0)
-        perturbed_image = perturbed_image.to(device)
-        utils.save_image(minmax_normalization(perturbed_image), os.path.join("./adv_example", "blurred.png"))
-    exit()
+
     # to_pil = transforms.ToPILImage()
     # to_tensor = transforms.ToTensor()
     # perturbed_image = to_tensor(tiltshift(to_pil(perturbed_image.squeeze()))).unsqueeze()
 
-    return perturbed_image, rmap
-######################################################################
-# Saliency & Blur
-# ~~~~~~~~~~~
-#
-
-def get_reverse_saliency(img):
-    _, reverse_map = infer_smap.map(img=img, weights="./salient_bluring/saliency_map_generation/salgan_salicon.pt", model=SalBCE.SalGAN(), device=device)
-    return reverse_map
-
-def tiltshift(img_path, rmap_path):
-    img = Image.open(img_path)
-    img = img.convert("RGB")
-    rmap = Image.open(rmap_path)
-    rmap = rmap.convert("RGB")
-    x = miniatures.createMiniature(img, [], custom_mask=rmap)
-    return x
+    return perturbed_image
 
 
 ######################################################################
@@ -184,18 +164,18 @@ def tiltshift(img_path, rmap_path):
 # function. Each call to this test function performs a full test step on
 # the test set and reports a final accuracy. However, notice that
 # this function also takes an *epsilon* input. This is because the
-# ``test`` function reports the accuracy of a model that is under attack
+# ``test`` function reports the accuracy of a attack_model that is under attack
 # from an adversary with strength `epsilon`. More specifically, for
 # each sample in the test set, the function computes the gradient of the
 # loss w.r.t the input data (`data_grad`), creates a perturbed
 # image with ``fgsm_attack`` (`perturbed_data`), then checks to see
 # if the perturbed example is adversarial. In addition to testing the
-# accuracy of the model, the function also saves and returns some
+# accuracy of the attack_model, the function also saves and returns some
 # successful adversarial examples to be visualized later.
 #
 
 
-def test( model, device, test_loader, epsilon ):
+def test( attack_model, device, test_loader, epsilon ):
 
     start = datetime.datetime.now().replace(microsecond=0)
 
@@ -203,61 +183,71 @@ def test( model, device, test_loader, epsilon ):
     correct = 0
     wrong_counter = 0
     adv_examples = []
-    print("Initiating test with epsilon {} and blurring set to {}".format(epsilon, BLURRING))
+    print("Initiating test with epsilon {}".format(epsilon))
+
+    # Set the highest goal
+    aesthetics_goal = torch.zeros(10).unsqueeze(0)
+    aesthetics_goal[-1] = 1 #Last index means score 10
+    aesthetics_goal = aesthetics_goal.to(device)
     # Loop over all examples in test set
     for i, (data, target) in enumerate(test_loader):
 
         # Send the data and label to the device
         data, target = data.to(device), target.to(device)
+        data_copy = data
         # Set requires_grad attribute of tensor. Important for Attack
         data.requires_grad = True
-
-        # Forward pass the data through the model
-        output = model(data)
-        init_pred = F.softmax(output, dim=1)
+        data_copy.requires_grad = True
+        # Forward pass the data through the attack_model
+        attack_output = attack_model(data)
+        init_pred = F.softmax(attack_output, dim=1)
         init_pred = init_pred.max(1, keepdim=True)[1] # get the index of the max log-probability
-        #print(target)
-        #print(init_pred)
-        # exit()
-        # print(init_pred)
-        # exit()
-        # print(F.log_softmax(output, dim=1))
+
+        # data_copy = data_copy.resize_
+        # transforms.Resize(interpolation=2)
+        aesthetics_output = aesthetics_model(data_copy)
+        # print(aesthetics_output.size())
+        # print(aesthetics_goal.size())
+        # print(aesthetics_output)
+
+        # print(F.log_softmax(attack_output, dim=1))
         # target = torch.LongTensor([2]).to('cuda')
         # If the initial prediction is wrong, dont bother attacking, just move on
         if i == TEST_NUMBER:
             break
         if init_pred.item() != target.item():
             continue
-        # print(F.log_softmax(output, dim=1).exp()) #Gives one hot encoding
+        # print(F.log_softmax(attack_output, dim=1).exp()) #Gives one hot encoding
 
 
         # Calculate the loss
-        loss = F.nll_loss(output, target)
+        attack_loss = F.nll_loss(attack_output, target)
         # Zero all existing gradients
-        model.zero_grad()
+        attack_model.zero_grad()
+        # Calculate gradients of attack_model in backward pass
+        attack_loss.backward()
 
-        # Calculate gradients of model in backward pass
-        loss.backward()
-
+        aesthetics_loss = emd_loss(aesthetics_output, aesthetics_goal)
+        aesthetics_model.zero_grad()
+        aesthetics_loss.backward()
         # Collect datagrad
         data_grad = data.grad.data
-
+        data_copy_grad = data_copy.grad.data
         # Call FGSM Attack
-        perturbed_data, rmap = fgsm_attack(data, epsilon, data_grad, device)
+        perturbed_data = fgsm_attack(data, epsilon, data_grad, device)
 
         # Re-classify the perturbed image
-        output = model(perturbed_data)
+        attack_output = attack_model(perturbed_data)
 
         # Check for success
-        final_pred = F.softmax(output, dim=1).max(1, keepdim=True)[1] # get the index of the max log-probability
+        final_pred = F.softmax(attack_output, dim=1).max(1, keepdim=True)[1] # get the index of the max log-probability
         if final_pred.item() == target.item():
             correct += 1
             # Special case for saving 0 epsilon examples
             if (epsilon == 0) and (len(adv_examples) < 5):
                 original_ex = data.squeeze().detach().cpu()#.numpy()
                 adv_ex = perturbed_data.squeeze().detach().cpu()#.numpy()
-                rmap = rmap.squeeze().detach().cpu()#.numpy()
-                adv_examples.append( (original_ex, adv_ex, rmap) )
+                adv_examples.append( (original_ex, adv_ex) )
         else:
             # Save some adv examples for visualization later
             # print("got some")
@@ -265,8 +255,7 @@ def test( model, device, test_loader, epsilon ):
 
                 original_ex = data.squeeze().detach().cpu()#.numpy()
                 adv_ex = perturbed_data.squeeze().detach().cpu()#.numpy()
-                rmap = rmap.squeeze().detach().cpu()#.numpy()
-                adv_examples.append( (original_ex, adv_ex, rmap) )
+                adv_examples.append( (original_ex, adv_ex) )
 
 
     # Calculate final accuracy for this epsilon
@@ -298,7 +287,7 @@ examples = []
 
 # Run test for each epsilon
 for eps in epsilons:
-    acc, ex = test(model, device, test_loader, eps)
+    acc, ex = test(attack_model, device, test_loader, eps)
     accuracies.append(acc)
     examples.append(ex)
 
@@ -317,7 +306,7 @@ for eps in epsilons:
 # not linear even though the epsilon values are linearly spaced. For
 # example, the accuracy at `\epsilon=0.05` is only about 4% lower
 # than `\epsilon=0`, but the accuracy at `\epsilon=0.2` is 25%
-# lower than `\epsilon=0.15`. Also, notice the accuracy of the model
+# lower than `\epsilon=0.15`. Also, notice the accuracy of the attack_model
 # hits random accuracy for a 10-class classifier between
 # `\epsilon=0.25` and `\epsilon=0.3`.
 #
@@ -325,7 +314,7 @@ for eps in epsilons:
 plt.figure(figsize=(5,5))
 plt.plot(epsilons, accuracies, "*-")
 plt.yticks(np.arange(0, 1.1, step=0.1))
-plt.xticks(np.arange(epsilon[0], epsilons[-1], step=.05))
+plt.xticks(np.arange(epsilons[0], epsilons[-1], step=.01))
 plt.title("Accuracy vs Epsilon")
 plt.xlabel("Epsilon")
 plt.ylabel("Accuracy")
@@ -356,11 +345,10 @@ plt.savefig("Epsilons.png")
 # plt.figure(figsize=(8,10))
 for i in range(len(epsilons)):
     for j in range(len(examples[i])):
-        orig, ex, rmap = examples[i][j]
+        orig, ex = examples[i][j]
 
         utils.save_image(minmax_normalization(orig), "./adv_example/original_e{}.png".format(epsilons[i]))
         utils.save_image(minmax_normalization(ex), "./adv_example/example_e{}.png".format(epsilons[i]))
-        utils.save_image(minmax_normalization(rmap), "./adv_example/rsmap_e{}.png".format(epsilons[i]))
 
 #         cnt += 1
 #         plt.subplot(len(epsilons),len(examples[0]),cnt)

@@ -25,7 +25,7 @@ def selectPoints(im):
 
 def createMiniature(im, pts, custom_mask=None, dof=40, color=1.9, contrast=1.4, offset_focus=9):
     # Cranking up the contrast and color
-    edited = ImageEnhance.Contrast(ImageEnhance.Color(im).enhance(color)).enhance(contrast)
+    # im = ImageEnhance.Contrast(ImageEnhance.Color(im).enhance(color)).enhance(contrast)
     # Determining whether we want a focal line mask or a custom mask (bells and whistles)
     if not custom_mask:
         # Creating the mask for a focal line
@@ -58,7 +58,7 @@ def createMiniature(im, pts, custom_mask=None, dof=40, color=1.9, contrast=1.4, 
         mask.convert("RGBA")
         mask.paste(mt,(-mt.size[0] / 2, -(mt.size[1] / 2 - MASK_HEIGHT / 2)))
         mask.convert("L")
-        mask = mask.resize(edited.size)
+        mask = mask.resize(im.size)
     else:
         # hello from the other side
         #mask = custom_mask.convert("1")
@@ -69,13 +69,13 @@ def createMiniature(im, pts, custom_mask=None, dof=40, color=1.9, contrast=1.4, 
 
     # Blurring the image and merging
     if custom_mask:
-        im_blur = Image.fromarray(np.uint8(gaussian_filter(np.array(edited, dtype=float), sigma=[1, 1, 0])))
+        im_blur = Image.fromarray(np.uint8(gaussian_filter(np.array(im, dtype=float), sigma=[1, 1, 0])))
     else:
-        im_blur = Image.fromarray(np.uint8(gaussian_filter(np.array(edited, dtype=float), sigma=[4, 4, 0])))
-    edited = edited.convert("RGBA")
-    edited.paste(im_blur, mask=mask)
+        im_blur = Image.fromarray(np.uint8(gaussian_filter(np.array(im, dtype=float), sigma=[4, 4, 0])))
+    im = im.convert("RGBA")
+    im.paste(im_blur, mask=mask)
 
-    return edited
+    return im
 
 def createMiniatureGif(image):
     frame, n, out = Image.open(image), 0, []
@@ -103,7 +103,7 @@ if __name__ == '__main__':
     infer_smap.map(img=sys.argv[1], weights="./saliency_map_generation/salgan_salicon.pt", model=SalBCE.SalGAN(), dir_to_save=".")
 
     x = createMiniature(Image.open(sys.argv[1]), [], custom_mask=Image.open("./reverse_saliency_map.png"))
-    # scipy.misc.imsave(output_name, x) # Needs fixing. Colors come out weird
+    scipy.misc.imsave(output_name, x) # Needs fixing. Colors come out weird
 
     print ("Image is saved in the directory as {}!".format(output_name))
 

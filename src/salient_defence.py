@@ -152,7 +152,6 @@ def fgsm_attack(image, epsilon, data_grad, device):
         perturbed_image = perturbed_image.unsqueeze(0)
         perturbed_image = perturbed_image.to(device)
         utils.save_image(minmax_normalization(perturbed_image), os.path.join("./adv_example", "blurred.png"))
-    exit()
     # to_pil = transforms.ToPILImage()
     # to_tensor = transforms.ToTensor()
     # perturbed_image = to_tensor(tiltshift(to_pil(perturbed_image.squeeze()))).unsqueeze()
