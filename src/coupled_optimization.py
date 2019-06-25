@@ -13,7 +13,7 @@ import cv2
 import copy
 import datasets
 import datetime
-from NIMA.model import NIMA, NIMA2, emd_loss
+from NIMA.model import NIMA, emd_loss
 from PIL import Image
 from collections import OrderedDict
 
@@ -112,7 +112,7 @@ base_model = models.vgg16(pretrained=False)
 # old_model = NIMA(base_model)
 # old_model.load_state_dict(torch.load("./NIMA/epoch-12.pkl"))
 
-aesthetics_model = NIMA2(base_model)
+aesthetics_model = NIMA(base_model)
 aesthetics_model.load_state_dict(torch.load("./NIMA/epoch-12.pkl"))
 
 aesthetics_model.to(device)

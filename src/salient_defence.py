@@ -23,13 +23,17 @@ PATH_TO_DATA = "../data/Places365/val_large"
 PATH_TO_LABELS = "../data/Places365/places365_val.txt"
 BATCH_SIZE = 1
 TEST_NUMBER = 100 #
-BLURRING = True
+TILTSHIFT = True
+SOBEL = True
 
 ######################################################################
 # Utility functions
 # --------------
 def minmax_normalization(X):
     return (X-X.min())/(X.max()-X.min())
+
+def rgb2gray(rgb):
+    return np.dot(rgb[...,:3], [0.2989, 0.5870, 0.1140])
 
 def load_weights(pt_model, device='cpu'):
     # Load stored model:
@@ -109,9 +113,6 @@ model.load_state_dict(checkpoint)
 # Set the model in evaluation mode. There is no training a model when training for a defence, instead you optimize the input.
 model.eval()
 
-for child in model.children():
-    print(child)
-
 
 ######################################################################
 # FGSM Attack
@@ -138,20 +139,41 @@ def fgsm_attack(image, epsilon, data_grad, device):
     # Create the perturbed image by adjusting each pixel of the input image
     # print(type(image))
     rmap = get_reverse_saliency(image) #Multiply by the reverse saliency map to mitigate perturbation on salient parts.
-    perturbed_image = image + epsilon*sign_data_grad*rmap
+    rmap_noflat = rmap
+    print(type(rmap))
+    ############
+    # Using a sobel filter to find edges then blurring to spread the edginess. This gives us another map that allows us to avoid perturbing flat areas.
+    from scipy import ndimage
+    dx = ndimage.sobel(image.detach().cpu().squeeze(0).numpy(), 0)  # horizontal derivative
+    dy = ndimage.sobel(image.detach().cpu().squeeze(0).numpy(), 1)  # vertical derivative
+    mag = np.hypot(dx, dy)  # magnitude
+    mag *= 255.0 / np.max(mag)  # normalize (Q&D)
+    stdv = 10 # magnitude of blurring
+    edginess = ndimage.filters.gaussian_filter(mag, stdv)
+    edginess = np.transpose(edginess, (1,2,0))
+    edginess = rgb2gray(edginess)
+    edginess = torch.from_numpy(edginess).unsqueeze(0).unsqueeze(0)
+    edginess = minmax_normalization(edginess) #bring to 0-1 scale
+    edginess = edginess.type(torch.FloatTensor).to(device)
+    rmap_noflat[edginess>edginess.mean()]=0 # Black out flat surfaces
+    rmap_noflat = minmax_normalization(rmap_noflat)
 
-    utils.save_image(minmax_normalization(rmap), os.path.join("./adv_example", "rmap.png"))
+
+    perturbed_image = image + epsilon*sign_data_grad*rmap_noflat
+
+    utils.save_image(minmax_normalization(rmap_noflat), os.path.join("./adv_example", "rmap.png"))
     utils.save_image(minmax_normalization(perturbed_image), os.path.join("./adv_example", "perturbed.png"))
     utils.save_image(minmax_normalization(image), os.path.join("./adv_example", "original.png"))
     # perturbed_image = torch.clamp(perturbed_image, -2, 2) # Changed to 95% confidence interval
     # Return the perturbed image
-    if BLURRING:
+    if TILTSHIFT:
         perturbed_image = tiltshift(os.path.join("./adv_example", "perturbed.png"), os.path.join("./adv_example", "rmap.png"))
         perturbed_image = perturbed_image.convert('RGB') # important to add, By default PIL is agnostic about color spaces: https://stackoverflow.com/questions/50622180/does-pil-image-convertrgb-converts-images-to-srgb-or-adobergb/50623824
         perturbed_image = transform_pipeline(perturbed_image)
         perturbed_image = perturbed_image.unsqueeze(0)
         perturbed_image = perturbed_image.to(device)
         utils.save_image(minmax_normalization(perturbed_image), os.path.join("./adv_example", "blurred.png"))
+    exit()
     # to_pil = transforms.ToPILImage()
     # to_tensor = transforms.ToTensor()
     # perturbed_image = to_tensor(tiltshift(to_pil(perturbed_image.squeeze()))).unsqueeze()
@@ -202,7 +224,7 @@ def test( model, device, test_loader, epsilon ):
     correct = 0
     wrong_counter = 0
     adv_examples = []
-    print("Initiating test with epsilon {} and blurring set to {}".format(epsilon, BLURRING))
+    print("Initiating test with epsilon {} and tiltshift set to {}".format(epsilon, TILTSHIFT))
     # Loop over all examples in test set
     for i, (data, target) in enumerate(test_loader):
 

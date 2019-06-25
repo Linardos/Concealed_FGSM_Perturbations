@@ -1,25 +1,10 @@
 # -*- coding: utf-8 -*-
-
+# Get weights from the repo as well:
+# https://github.com/kentsyx/Neural-IMage-Assessment
 import torch
 import torch.nn as nn
 
 class NIMA(nn.Module):
-    """Neural IMage Assessment model by Google"""
-    def __init__(self, base_model, num_classes=10):
-        super(NIMA, self).__init__()
-        self.features = base_model.features
-        self.classifier = nn.Sequential(
-            nn.Dropout(p=0.75),
-            nn.Linear(in_features=25088, out_features=num_classes),
-            nn.Softmax())
-
-    def forward(self, x):
-        out = self.features(x)
-        out = out.view(out.size(0), -1)
-        out = self.classifier(out)
-        return out
-
-class NIMA2(nn.Module):
     """Neural IMage Assessment model by Google"""
     def __init__(self, base_model, num_classes=10):
         super(NIMA2, self).__init__()
@@ -32,7 +17,7 @@ class NIMA2(nn.Module):
 
     def forward(self, x):
         out = self.features(x)
-        out = nn.functional.adaptive_avg_pool2d(out, 7) # 7 matches 25088
+        out = nn.functional.adaptive_avg_pool2d(out, 7) # 7 matches 25088, this number might need manipulation based on size of images.
         out = out.view(out.size(0), -1)
         out = self.classifier(out)
         return out
