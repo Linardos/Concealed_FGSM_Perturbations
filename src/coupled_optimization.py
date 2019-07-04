@@ -17,19 +17,22 @@ from NIMA.model import NIMA, emd_loss
 from PIL import Image
 from collections import OrderedDict
 
-torch.manual_seed(20)
+torch.manual_seed(10)
 
 ROOT_PATH = "/home/linardos/Documents/pPrivacy"
 PATH_TO_DATA = "../data/Places365/val_large"
 PATH_TO_LABELS = "../data/Places365/places365_val.txt"
 BATCH_SIZE = 1
 TEST_NUMBER = 100 #
-
+COUPLED = True
 ######################################################################
 # Utility functions
 # --------------
 def minmax_normalization(X):
     return (X-X.min())/(X.max()-X.min())
+
+def standardization(X):
+    return X.sub_(X.mean()).div_(X.std())
 
 def load_weights(pt_model, device='cpu'):
     # Load stored model:
@@ -61,7 +64,7 @@ def load_weights(pt_model, device='cpu'):
 #
 
 
-epsilons = [0, .01, .025, .05] #, .2, .25, .3]
+epsilons = [0, .05, .1, .15] #, .2, .25, .3]
 pretrained_model = "./models/resnet50_places365.pth.tar"
 use_cuda = True
 
@@ -183,7 +186,7 @@ def test( attack_model, device, test_loader, epsilon ):
     correct = 0
     wrong_counter = 0
     adv_examples = []
-    print("Initiating test with epsilon {}".format(epsilon))
+    print("Initiating test with epsilon {} and coupled set to {}".format(epsilon, COUPLED))
 
     # Set the highest goal
     aesthetics_goal = torch.zeros(10).unsqueeze(0)
@@ -194,7 +197,7 @@ def test( attack_model, device, test_loader, epsilon ):
 
         # Send the data and label to the device
         data, target = data.to(device), target.to(device)
-        data_copy = data
+        data_copy = data.clone()
         # Set requires_grad attribute of tensor. Important for Attack
         data.requires_grad = True
         data_copy.requires_grad = True
@@ -232,7 +235,14 @@ def test( attack_model, device, test_loader, epsilon ):
         aesthetics_loss.backward()
         # Collect datagrad
         data_grad = data.grad.data
-        data_copy_grad = data_copy.grad.data
+        data_aesth_grad = data_copy.grad.data
+
+        # The gradient of two different networks will be on a completely different scale. We need to make them comparable. We only care for the sign in the end, so standardize to mean 0 and std 1
+        if COUPLED:
+            data_grad = standardization(data_grad)
+            data_aesth_grad = standardization(data_aesth_grad)
+            data_grad+=data_aesth_grad
+
         # Call FGSM Attack
         perturbed_data = fgsm_attack(data, epsilon, data_grad, device)
 
@@ -314,7 +324,7 @@ for eps in epsilons:
 plt.figure(figsize=(5,5))
 plt.plot(epsilons, accuracies, "*-")
 plt.yticks(np.arange(0, 1.1, step=0.1))
-plt.xticks(np.arange(epsilons[0], epsilons[-1], step=.01))
+plt.xticks(np.arange(epsilons[0], epsilons[-1], step=epsilons[1]-epsilons[0]))
 plt.title("Accuracy vs Epsilon")
 plt.xlabel("Epsilon")
 plt.ylabel("Accuracy")

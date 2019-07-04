@@ -14,6 +14,7 @@ import datasets
 import datetime
 from salient_bluring import miniatures
 from salient_bluring.saliency_map_generation import infer_smap, SalBCE
+from NIMA.model import NIMA, emd_loss
 from PIL import Image
 
 torch.manual_seed(20)
@@ -23,8 +24,8 @@ PATH_TO_DATA = "../data/Places365/val_large"
 PATH_TO_LABELS = "../data/Places365/places365_val.txt"
 BATCH_SIZE = 1
 TEST_NUMBER = 100 #
-TILTSHIFT = True
-SOBEL = True
+USE_MAP = True
+TILTSHIFT = False
 
 ######################################################################
 # Utility functions
@@ -72,7 +73,8 @@ def load_weights(pt_model, device='cpu'):
 #
 
 
-epsilons = [.05, .0625, .075] #, .2, .25, .3]
+epsilons = [.0, .05, .01, .15] #, .2, .25, .3]
+# epsilons = [.15] #, .2, .25, .3]
 pretrained_model = "./models/resnet50_places365.pth.tar"
 use_cuda = True
 
@@ -113,6 +115,22 @@ model.load_state_dict(checkpoint)
 # Set the model in evaluation mode. There is no training a model when training for a defence, instead you optimize the input.
 model.eval()
 
+#--------------------------
+# Aesthetics model for evaluation:
+# ~~~~~~~~~~~~~~~~~~
+
+# for child in aesthetics_model.children():
+#     print(child)
+base_model = models.vgg16(pretrained=False)
+# old_model = NIMA(base_model)
+# old_model.load_state_dict(torch.load("./NIMA/epoch-12.pkl"))
+
+aesthetics_model = NIMA(base_model)
+aesthetics_model.load_state_dict(torch.load("./NIMA/epoch-12.pkl"))
+
+aesthetics_model.to(device)
+aesthetics_model.eval()
+
 
 ######################################################################
 # FGSM Attack
@@ -138,30 +156,34 @@ def fgsm_attack(image, epsilon, data_grad, device):
     sign_data_grad = data_grad.sign()
     # Create the perturbed image by adjusting each pixel of the input image
     # print(type(image))
-    rmap = get_reverse_saliency(image) #Multiply by the reverse saliency map to mitigate perturbation on salient parts.
-    rmap_noflat = rmap
-    print(type(rmap))
-    ############
-    # Using a sobel filter to find edges then blurring to spread the edginess. This gives us another map that allows us to avoid perturbing flat areas.
-    from scipy import ndimage
-    dx = ndimage.sobel(image.detach().cpu().squeeze(0).numpy(), 0)  # horizontal derivative
-    dy = ndimage.sobel(image.detach().cpu().squeeze(0).numpy(), 1)  # vertical derivative
-    mag = np.hypot(dx, dy)  # magnitude
-    mag *= 255.0 / np.max(mag)  # normalize (Q&D)
-    stdv = 10 # magnitude of blurring
-    edginess = ndimage.filters.gaussian_filter(mag, stdv)
-    edginess = np.transpose(edginess, (1,2,0))
-    edginess = rgb2gray(edginess)
-    edginess = torch.from_numpy(edginess).unsqueeze(0).unsqueeze(0)
-    edginess = minmax_normalization(edginess) #bring to 0-1 scale
-    edginess = edginess.type(torch.FloatTensor).to(device)
-    rmap_noflat[edginess>edginess.mean()]=0 # Black out flat surfaces
-    rmap_noflat = minmax_normalization(rmap_noflat)
+    if USE_MAP:
+        rmap = get_reverse_saliency(image) #Multiply by the reverse saliency map to mitigate perturbation on salient parts.
+        rmap_noflat = rmap
+        ############
+        # Using a sobel filter to find edges then blurring to spread the edginess. This gives us another map that allows us to avoid perturbing flat areas.
+        from scipy import ndimage
+        dx = ndimage.sobel(image.detach().cpu().squeeze(0).numpy(), 0)  # horizontal derivative
+        dy = ndimage.sobel(image.detach().cpu().squeeze(0).numpy(), 1)  # vertical derivative
+        mag = np.hypot(dx, dy)  # magnitude
+        mag *= 255.0 / np.max(mag)  # normalize (Q&D)
+        stdv = 10 # magnitude of blurring
+        edginess = ndimage.filters.gaussian_filter(mag, stdv)
+        edginess = np.transpose(edginess, (1,2,0))
+        edginess = rgb2gray(edginess)
+        edginess = torch.from_numpy(edginess).unsqueeze(0).unsqueeze(0)
+        utils.save_image(minmax_normalization(edginess), os.path.join("./adv_example", "edginess.png"))
+        edginess = minmax_normalization(edginess) #bring to 0-1 scale
+        edginess = edginess.type(torch.FloatTensor).to(device)
+        # rmap_noflat[edginess<edginess.mean()+abs(edginess.mean()/2)]=0 # Black out flat surfaces
+        rmap_noflat[edginess<edginess.mean()]=0 # Black out flat surfaces
+        rmap_noflat = minmax_normalization(rmap_noflat)
 
+        perturbed_image = image + epsilon*sign_data_grad*rmap_noflat
+        utils.save_image(minmax_normalization(rmap), os.path.join("./adv_example", "rmap.png"))
+    else:
+        rmap = None
+        perturbed_image = image + epsilon*sign_data_grad
 
-    perturbed_image = image + epsilon*sign_data_grad*rmap_noflat
-
-    utils.save_image(minmax_normalization(rmap_noflat), os.path.join("./adv_example", "rmap.png"))
     utils.save_image(minmax_normalization(perturbed_image), os.path.join("./adv_example", "perturbed.png"))
     utils.save_image(minmax_normalization(image), os.path.join("./adv_example", "original.png"))
     # perturbed_image = torch.clamp(perturbed_image, -2, 2) # Changed to 95% confidence interval
@@ -173,7 +195,6 @@ def fgsm_attack(image, epsilon, data_grad, device):
         perturbed_image = perturbed_image.unsqueeze(0)
         perturbed_image = perturbed_image.to(device)
         utils.save_image(minmax_normalization(perturbed_image), os.path.join("./adv_example", "blurred.png"))
-    exit()
     # to_pil = transforms.ToPILImage()
     # to_tensor = transforms.ToTensor()
     # perturbed_image = to_tensor(tiltshift(to_pil(perturbed_image.squeeze()))).unsqueeze()
@@ -223,7 +244,8 @@ def test( model, device, test_loader, epsilon ):
     # Accuracy counter
     correct = 0
     wrong_counter = 0
-    adv_examples = []
+    adv_examples, original_aesthetics, final_aesthetics = [], [], []
+
     print("Initiating test with epsilon {} and tiltshift set to {}".format(epsilon, TILTSHIFT))
     # Loop over all examples in test set
     for i, (data, target) in enumerate(test_loader):
@@ -237,6 +259,7 @@ def test( model, device, test_loader, epsilon ):
         output = model(data)
         init_pred = F.softmax(output, dim=1)
         init_pred = init_pred.max(1, keepdim=True)[1] # get the index of the max log-probability
+
         #print(target)
         #print(init_pred)
         # exit()
@@ -277,7 +300,8 @@ def test( model, device, test_loader, epsilon ):
             if (epsilon == 0) and (len(adv_examples) < 5):
                 original_ex = data.squeeze().detach().cpu()#.numpy()
                 adv_ex = perturbed_data.squeeze().detach().cpu()#.numpy()
-                rmap = rmap.squeeze().detach().cpu()#.numpy()
+                if USE_MAP:
+                    rmap = rmap.squeeze().detach().cpu()#.numpy()
                 adv_examples.append( (original_ex, adv_ex, rmap) )
         else:
             # Save some adv examples for visualization later
@@ -286,17 +310,40 @@ def test( model, device, test_loader, epsilon ):
 
                 original_ex = data.squeeze().detach().cpu()#.numpy()
                 adv_ex = perturbed_data.squeeze().detach().cpu()#.numpy()
-                rmap = rmap.squeeze().detach().cpu()#.numpy()
+                if USE_MAP:
+                    rmap = rmap.squeeze().detach().cpu()#.numpy()
                 adv_examples.append( (original_ex, adv_ex, rmap) )
 
 
+        data_copy, perturbed_copy = data.detach(), perturbed_data.detach() # Have to detach from graph that was developed for the attack model or get memory errors.
+        before = aesthetics_model(data_copy).detach().cpu()
+        after = aesthetics_model(perturbed_copy).detach().cpu()
+        predicted_mean_before = 0
+        # print(before[0])
+        for i, elem in enumerate(before[0]):
+            predicted_mean_before += i * elem
+        predicted_mean_after = 0
+        for i, elem in enumerate(after[0]):
+            predicted_mean_after += i * elem
+        original_aesthetics.append(predicted_mean_before)
+        final_aesthetics.append(predicted_mean_after)
+        # print(predicted_mean_before)
+
     # Calculate final accuracy for this epsilon
     final_acc = correct/float(TEST_NUMBER)
+    original_aes_score = np.mean(original_aesthetics)
+    final_aes_score = np.mean(final_aesthetics)
+
     # print("Wrong percentage: {}".format(wrong_counter/TEST_NUMBER))
     # Return the accuracy and an adversarial example
     end = datetime.datetime.now().replace(microsecond=0)
 
     print("Epsilon: {}\tTest Accuracy = {} / {} = {}\t Time elapsed: {}".format(epsilon, correct, TEST_NUMBER, final_acc, end-start)) #replace TEST_NUMBER with len(test_loader) when done with testing
+    print("Original/Final Avg of Aesthetics: {}/{}".format(original_aes_score, final_aes_score)) #replace TEST_NUMBER with len(test_loader) when done with testing
+    logfile = open("logfile.txt","a")
+    logfile.write("Epsilon: {}\tTest Accuracy = {} / {} = {}\t Time elapsed: {} \n".format(epsilon, correct, TEST_NUMBER, final_acc, end-start)) #replace TEST_NUMBER with len(test_loader) when done with testing
+    logfile.write("Original/Final Avg of Aesthetics: {}/{} \n".format(original_aes_score, final_aes_score))
+    logfile.close()
 
     return final_acc, adv_examples
 
@@ -346,7 +393,7 @@ for eps in epsilons:
 plt.figure(figsize=(5,5))
 plt.plot(epsilons, accuracies, "*-")
 plt.yticks(np.arange(0, 1.1, step=0.1))
-plt.xticks(np.arange(epsilon[0], epsilons[-1], step=.05))
+plt.xticks(np.arange(epsilons[0], epsilons[-1], step=epsilons[1]-epsilons[0]))
 plt.title("Accuracy vs Epsilon")
 plt.xlabel("Epsilon")
 plt.ylabel("Accuracy")
@@ -381,7 +428,9 @@ for i in range(len(epsilons)):
 
         utils.save_image(minmax_normalization(orig), "./adv_example/original_e{}.png".format(epsilons[i]))
         utils.save_image(minmax_normalization(ex), "./adv_example/example_e{}.png".format(epsilons[i]))
-        utils.save_image(minmax_normalization(rmap), "./adv_example/rsmap_e{}.png".format(epsilons[i]))
+
+        if USE_MAP:
+            utils.save_image(minmax_normalization(rmap), "./adv_example/rsmap_e{}.png".format(epsilons[i]))
 
 #         cnt += 1
 #         plt.subplot(len(epsilons),len(examples[0]),cnt)
