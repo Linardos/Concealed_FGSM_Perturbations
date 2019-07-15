@@ -1,14 +1,32 @@
-Epsilon: 0.0	Test Accuracy = 45 / 100 = 0.45	 Time elapsed: 0:01:58 
-Original/Final Avg of Aesthetics: 4.204399108886719/4.204399108886719 
-Epsilon: 0.05	Test Accuracy = 18 / 100 = 0.18	 Time elapsed: 0:02:30 
-Original/Final Avg of Aesthetics: 4.296227931976318/4.236824035644531 
-Epsilon: 0.01	Test Accuracy = 22 / 100 = 0.22	 Time elapsed: 0:02:29 
-Original/Final Avg of Aesthetics: 4.201298713684082/4.199776649475098 
-Epsilon: 0.15	Test Accuracy = 9 / 100 = 0.09	 Time elapsed: 0:01:55 
-Original/Final Avg of Aesthetics: 4.110845565795898/4.03134822845459 
-Epsilon: 0.15	Test Accuracy = 33 / 100 = 0.33	 Time elapsed: 0:02:10 
-Original/Final Avg of Aesthetics: 4.204399108886719/4.213403701782227 
-Epsilon: 0.05	Test Accuracy = 28 / 100 = 0.28	 Time elapsed: 0:02:11 
-Original/Final Avg of Aesthetics: 4.204399108886719/4.2136616706848145 
-Epsilon: 0.15	Test Accuracy = 18 / 100 = 0.18	 Time elapsed: 0:02:13 
-Original/Final Avg of Aesthetics: 4.204399108886719/4.209729194641113 
+Epsilon: 0.0	Test Accuracy = 45 / 100 = 0.45	 Time elapsed: 0:01:59
+Original/Final Avg of Aesthetics: 4.204399108886719/4.204399108886719
+Epsilon: 0.05	Test Accuracy = 19 / 100 = 0.19	 Time elapsed: 0:02:22
+Original/Final Avg of Aesthetics: 4.296227931976318/4.249059200286865
+Epsilon: 0.01	Test Accuracy = 29 / 100 = 0.29	 Time elapsed: 0:01:53 
+Original/Final Avg of Aesthetics: 4.201298713684082/4.1930460929870605 
+Epsilon: 0.15	Test Accuracy = 9 / 100 = 0.09	 Time elapsed: 0:01:56 
+Original/Final Avg of Aesthetics: 4.110845565795898/4.106922626495361 
+Epsilon: 0.0	Test Accuracy = 44 / 100 = 0.44	 Time elapsed: 0:00:15 
+Original/Final Avg of Aesthetics: 4.181796550750732/4.181796550750732 
+Epsilon: 0.05	Test Accuracy = 3 / 100 = 0.03	 Time elapsed: 0:00:15 
+Original/Final Avg of Aesthetics: 4.219951629638672/4.1233110427856445 
+Epsilon: 0.01	Test Accuracy = 15 / 100 = 0.15	 Time elapsed: 0:00:18 
+Original/Final Avg of Aesthetics: 4.211716175079346/4.194408893585205 
+Epsilon: 0.15	Test Accuracy = 4 / 100 = 0.04	 Time elapsed: 0:00:19 
+Original/Final Avg of Aesthetics: 4.229447364807129/3.9937796592712402 
+Epsilon: 0.0	Test Accuracy = 49 / 100 = 0.49	 Time elapsed: 0:00:17 
+Original/Final Avg of Aesthetics: 4.234798431396484/4.234798431396484 
+Epsilon: 0.01	Test Accuracy = 10 / 100 = 0.1	 Time elapsed: 0:00:18 
+Original/Final Avg of Aesthetics: 4.130486488342285/4.112420082092285 
+Epsilon: 0.025	Test Accuracy = 9 / 100 = 0.09	 Time elapsed: 0:00:16 
+Original/Final Avg of Aesthetics: 4.189138889312744/4.127566337585449 
+Epsilon: 0.05	Test Accuracy = 5 / 100 = 0.05	 Time elapsed: 0:00:17 
+Original/Final Avg of Aesthetics: 4.216867923736572/4.092864990234375 
+Epsilon: 0.0	Test Accuracy = 1495 / 3000 = 0.49833333333333335	 Time elapsed: 0:08:20 
+Original/Final Avg of Aesthetics: 4.218029975891113/4.218029975891113 
+Epsilon: 0.01	Test Accuracy = 414 / 3000 = 0.138	 Time elapsed: 0:08:05 
+Original/Final Avg of Aesthetics: 4.2180304527282715/4.2023749351501465 
+Epsilon: 0.025	Test Accuracy = 177 / 3000 = 0.059	 Time elapsed: 0:07:52 
+Original/Final Avg of Aesthetics: 4.2180304527282715/4.1616692543029785 
+Epsilon: 0.05	Test Accuracy = 117 / 3000 = 0.039	 Time elapsed: 0:07:33 
+Original/Final Avg of Aesthetics: 4.218029975891113/4.114994525909424 

@@ -8,10 +8,9 @@ from PIL import Image
 
 class Places365(data.Dataset):
   'Characterizes a dataset for PyTorch'
-  def __init__(self, path_to_data, path_to_labels, list_IDs, resolution=None, transform=None):
+  def __init__(self, path_to_data, path_to_labels, list_IDs=None, resolution=None, transform=None):
         'Initialization'
         self.path_to_data = path_to_data
-        self.list_IDs = list_IDs
         self.resolution = resolution
         self.path_to_labels = path_to_labels
         self.transform = transform
@@ -19,7 +18,15 @@ class Places365(data.Dataset):
         with open(path_to_labels) as f:
             for line in f:
                 (key, val) = line.split()
+                val = val.replace('\n', "")
+                key = key.replace('"', "")
+                val = val.replace('"', "")
                 self.d[str(key)] = int(val)
+
+        if list_IDs == None:
+            self.list_IDs = list(self.d.keys())
+        else:
+            self.list_IDs = list_IDs
 
   def __len__(self):
         'Denotes the total number of samples'
@@ -29,6 +36,7 @@ class Places365(data.Dataset):
         'Generates one sample of data'
         # Select sample
         ID = self.list_IDs[index]
+        print(ID)
         # Load image
         X = Image.open(os.path.join(self.path_to_data, ID))
         # print(X)
@@ -44,4 +52,4 @@ class Places365(data.Dataset):
         # exit()
         # Match to label
         y = torch.tensor(self.d[ID])
-        return X, y
+        return X, y, ID

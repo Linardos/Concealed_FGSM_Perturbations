@@ -17,14 +17,14 @@ from salient_bluring.saliency_map_generation import infer_smap, SalBCE
 from NIMA.model import NIMA, emd_loss
 from PIL import Image
 
-torch.manual_seed(20)
+torch.manual_seed(10) # original test: 20
 
 ROOT_PATH = "/home/linardos/Documents/pPrivacy"
 PATH_TO_DATA = "../data/Places365/val_large"
 PATH_TO_LABELS = "../data/Places365/places365_val.txt"
+PATH_TO_LABELS = "../data/Places365/MEPP18val.csv"
 BATCH_SIZE = 1
-TEST_NUMBER = 100 #
-USE_MAP = True
+USE_MAP = False
 TILTSHIFT = False
 
 ######################################################################
@@ -73,7 +73,7 @@ def load_weights(pt_model, device='cpu'):
 #
 
 
-epsilons = [.0, .05, .01, .15] #, .2, .25, .3]
+epsilons = [.0, .01, .025, .05] #, .2, .25, .3]
 # epsilons = [.15] #, .2, .25, .3]
 pretrained_model = "./models/resnet50_places365.pth.tar"
 use_cuda = True
@@ -95,7 +95,7 @@ transform_pipeline = transforms.Compose([
         transforms.Normalize(mean=[0.485, 0.456, 0.406],
                              std=[0.229, 0.224, 0.225])
     ])
-dataset = datasets.Places365(path_to_data=PATH_TO_DATA, path_to_labels=PATH_TO_LABELS, list_IDs = os.listdir(PATH_TO_DATA), transform=transform_pipeline)
+dataset = datasets.Places365(path_to_data=PATH_TO_DATA, path_to_labels=PATH_TO_LABELS, transform=transform_pipeline)
 test_loader = torch.utils.data.DataLoader(
             dataset=dataset,
             batch_size=BATCH_SIZE,
@@ -248,7 +248,7 @@ def test( model, device, test_loader, epsilon ):
 
     print("Initiating test with epsilon {} and tiltshift set to {}".format(epsilon, TILTSHIFT))
     # Loop over all examples in test set
-    for i, (data, target) in enumerate(test_loader):
+    for i, (data, target, ID) in enumerate(test_loader):
 
         # Send the data and label to the device
         data, target = data.to(device), target.to(device)
@@ -268,8 +268,6 @@ def test( model, device, test_loader, epsilon ):
         # print(F.log_softmax(output, dim=1))
         # target = torch.LongTensor([2]).to('cuda')
         # If the initial prediction is wrong, dont bother attacking, just move on
-        if i == TEST_NUMBER:
-            break
         if init_pred.item() != target.item():
             continue
         # print(F.log_softmax(output, dim=1).exp()) #Gives one hot encoding
@@ -330,18 +328,18 @@ def test( model, device, test_loader, epsilon ):
         # print(predicted_mean_before)
 
     # Calculate final accuracy for this epsilon
-    final_acc = correct/float(TEST_NUMBER)
+    final_acc = correct/float(len(test_loader))
     original_aes_score = np.mean(original_aesthetics)
     final_aes_score = np.mean(final_aesthetics)
 
-    # print("Wrong percentage: {}".format(wrong_counter/TEST_NUMBER))
+    # print("Wrong percentage: {}".format(wrong_counter/len(test_loader)))
     # Return the accuracy and an adversarial example
     end = datetime.datetime.now().replace(microsecond=0)
 
-    print("Epsilon: {}\tTest Accuracy = {} / {} = {}\t Time elapsed: {}".format(epsilon, correct, TEST_NUMBER, final_acc, end-start)) #replace TEST_NUMBER with len(test_loader) when done with testing
-    print("Original/Final Avg of Aesthetics: {}/{}".format(original_aes_score, final_aes_score)) #replace TEST_NUMBER with len(test_loader) when done with testing
+    print("Epsilon: {}\tTest Accuracy = {} / {} = {}\t Time elapsed: {}".format(epsilon, correct, len(test_loader), final_acc, end-start))
+    print("Original/Final Avg of Aesthetics: {}/{}".format(original_aes_score, final_aes_score))
     logfile = open("logfile.txt","a")
-    logfile.write("Epsilon: {}\tTest Accuracy = {} / {} = {}\t Time elapsed: {} \n".format(epsilon, correct, TEST_NUMBER, final_acc, end-start)) #replace TEST_NUMBER with len(test_loader) when done with testing
+    logfile.write("Epsilon: {}\tTest Accuracy = {} / {} = {}\t Time elapsed: {} \n".format(epsilon, correct, len(test_loader), final_acc, end-start))
     logfile.write("Original/Final Avg of Aesthetics: {}/{} \n".format(original_aes_score, final_aes_score))
     logfile.close()
 
