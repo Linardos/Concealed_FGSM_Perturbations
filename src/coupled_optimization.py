@@ -22,8 +22,8 @@ torch.manual_seed(10)
 ROOT_PATH = "/home/linardos/Documents/pPrivacy"
 PATH_TO_DATA = "../data/Places365/val_large"
 PATH_TO_LABELS = "../data/Places365/places365_val.txt"
+PATH_TO_LABELS = "../data/Places365/MEPP18val.csv"
 BATCH_SIZE = 1
-TEST_NUMBER = 100 #
 COUPLED = True
 ######################################################################
 # Utility functions
@@ -216,8 +216,6 @@ def test( attack_model, device, test_loader, epsilon ):
         # print(F.log_softmax(attack_output, dim=1))
         # target = torch.LongTensor([2]).to('cuda')
         # If the initial prediction is wrong, dont bother attacking, just move on
-        if i == TEST_NUMBER:
-            break
         if init_pred.item() != target.item():
             continue
         # print(F.log_softmax(attack_output, dim=1).exp()) #Gives one hot encoding
@@ -269,13 +267,17 @@ def test( attack_model, device, test_loader, epsilon ):
 
 
     # Calculate final accuracy for this epsilon
-    final_acc = correct/float(TEST_NUMBER)
-    # print("Wrong percentage: {}".format(wrong_counter/TEST_NUMBER))
+    final_acc = correct/float(len(test_loader))
+    # print("Wrong percentage: {}".format(wrong_counter/len(test_loader)))
     # Return the accuracy and an adversarial example
     end = datetime.datetime.now().replace(microsecond=0)
 
-    print("Epsilon: {}\tTest Accuracy = {} / {} = {}\t Time elapsed: {}".format(epsilon, correct, TEST_NUMBER, final_acc, end-start)) #replace TEST_NUMBER with len(test_loader) when done with testing
-
+    print("Epsilon: {}\tTest Accuracy = {} / {} = {}\t Time elapsed: {}".format(epsilon, correct, len(test_loader), final_acc, end-start)) #replace len(test_loader) with len(test_loader) when done with testing
+    # print("Original/Final Avg of Aesthetics: {}/{}".format(original_aes_score, final_aes_score))
+    logfile = open("logfile.txt","a")
+    logfile.write("Epsilon: {}\tTest Accuracy = {} / {} = {}\t Time elapsed: {} \n".format(epsilon, correct, len(test_loader), final_acc, end-start))
+    # logfile.write("Original/Final Avg of Aesthetics: {}/{} \n".format(original_aes_score, final_aes_score))
+    logfile.close()
     return final_acc, adv_examples
 
 

@@ -24,8 +24,8 @@ PATH_TO_DATA = "../data/Places365/val_large"
 PATH_TO_LABELS = "../data/Places365/places365_val.txt"
 PATH_TO_LABELS = "../data/Places365/MEPP18val.csv"
 BATCH_SIZE = 1
-USE_MAP = False
-TILTSHIFT = False
+USE_MAP = True
+TILTSHIFT = True
 
 ######################################################################
 # Utility functions

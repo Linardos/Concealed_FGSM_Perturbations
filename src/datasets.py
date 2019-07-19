@@ -36,7 +36,6 @@ class Places365(data.Dataset):
         'Generates one sample of data'
         # Select sample
         ID = self.list_IDs[index]
-        print(ID)
         # Load image
         X = Image.open(os.path.join(self.path_to_data, ID))
         # print(X)

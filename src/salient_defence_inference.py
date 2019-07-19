@@ -19,15 +19,15 @@ from PIL import Image
 
 torch.manual_seed(10) # original test: 20
 
-EPSILON = 0.01
+
 ROOT_PATH = "/home/linardos/Documents/pPrivacy"
 PATH_TO_DATA = "../data/Places365/val_large"
 PATH_TO_LABELS = "../data/Places365/places365_val.txt"
-PATH_TO_OUTPUT = "../data/submissions/epsilon{}".format(EPSILON)
+
 list_IDs = [line.rstrip('\n') for line in open("../data/Places365/MEPP19test.csv")]
 BATCH_SIZE = 1
-USE_MAP = False
-TILTSHIFT = False
+TILTSHIFT = True
+USE_MAP = True
 
 ######################################################################
 # Utility functions
@@ -139,14 +139,14 @@ model.eval()
 #
 
 # FGSM attack code
-def fgsm_attack(image, epsilon, data_grad, device, places_id):
+def fgsm_attack(image, epsilon, data_grad, device, places_id, path_to_output):
     # Collect the element-wise sign of the data gradient
     sign_data_grad = data_grad.sign()
     # Create the perturbed image by adjusting each pixel of the input image
-    # print(type(image))
     if USE_MAP:
         rmap = get_reverse_saliency(image) #Multiply by the reverse saliency map to mitigate perturbation on salient parts.
         rmap_noflat = rmap
+        rmap_path = os.path.join("./adv_example", "rmap.png")
         ############
         # Using a sobel filter to find edges then blurring to spread the edginess. This gives us another map that allows us to avoid perturbing flat areas.
         from scipy import ndimage
@@ -159,7 +159,7 @@ def fgsm_attack(image, epsilon, data_grad, device, places_id):
         edginess = np.transpose(edginess, (1,2,0))
         edginess = rgb2gray(edginess)
         edginess = torch.from_numpy(edginess).unsqueeze(0).unsqueeze(0)
-        # utils.save_image(minmax_normalization(edginess), os.path.join("./adv_example", "edginess.png"))
+        utils.save_image(minmax_normalization(edginess), os.path.join("./adv_example", "edginess.png"))
         edginess = minmax_normalization(edginess) #bring to 0-1 scale
         edginess = edginess.type(torch.FloatTensor).to(device)
         # rmap_noflat[edginess<edginess.mean()+abs(edginess.mean()/2)]=0 # Black out flat surfaces
@@ -167,18 +167,19 @@ def fgsm_attack(image, epsilon, data_grad, device, places_id):
         rmap_noflat = minmax_normalization(rmap_noflat)
 
         perturbed_image = image + epsilon*sign_data_grad*rmap_noflat
-        utils.save_image(minmax_normalization(rmap), os.path.join("./adv_example", "rmap.png"))
+        utils.save_image(minmax_normalization(rmap), rmap_path)
     else:
         rmap = None
         perturbed_image = image + epsilon*sign_data_grad
 
-    utils.save_image(minmax_normalization(perturbed_image), os.path.join(PATH_TO_OUTPUT, "Insight-DCU_{}".format(places_id)))
+    perturbed_path = os.path.join(path_to_output, "Insight-DCU_e{}tshift_{}".format(epsilon, places_id))
+    utils.save_image(minmax_normalization(perturbed_image), perturbed_path)
 
     # utils.save_image(minmax_normalization(image), os.path.join("./adv_example", "original.png"))
     # perturbed_image = torch.clamp(perturbed_image, -2, 2) # Changed to 95% confidence interval
     # Return the perturbed image
     if TILTSHIFT:
-        perturbed_image = tiltshift(os.path.join("./adv_example", "perturbed.png"), os.path.join("./adv_example", "rmap.png"))
+        perturbed_image = tiltshift(perturbed_path, rmap_path)
         perturbed_image = perturbed_image.convert('RGB') # important to add, By default PIL is agnostic about color spaces: https://stackoverflow.com/questions/50622180/does-pil-image-convertrgb-converts-images-to-srgb-or-adobergb/50623824
         perturbed_image = transform_pipeline(perturbed_image)
         perturbed_image = perturbed_image.unsqueeze(0)
@@ -203,6 +204,8 @@ def tiltshift(img_path, rmap_path):
     img = img.convert("RGB")
     rmap = Image.open(rmap_path)
     rmap = rmap.convert("RGB")
+    # print(rmap.size)
+    # print(img.size)
     x = miniatures.createMiniature(img, [], custom_mask=rmap)
     return x
 
@@ -226,7 +229,7 @@ def tiltshift(img_path, rmap_path):
 #
 
 
-def infer( model, device, test_loader, epsilon ):
+def infer( model, device, test_loader, epsilon, path_to_output):
 
     start = datetime.datetime.now().replace(microsecond=0)
 
@@ -239,7 +242,6 @@ def infer( model, device, test_loader, epsilon ):
     # Loop over all examples in test set
     for i, (data, target, ID) in enumerate(test_loader):
         # Send the data and label to the device
-        print(ID)
         data, target = data.to(device), target.to(device)
         # Set requires_grad attribute of tensor. Important for Attack
         data.requires_grad = True
@@ -257,8 +259,8 @@ def infer( model, device, test_loader, epsilon ):
         # print(F.log_softmax(output, dim=1))
         # target = torch.LongTensor([2]).to('cuda')
         # If the initial prediction is wrong, dont bother attacking, just move on
-        if init_pred.item() != target.item():
-            continue
+        # if init_pred.item() != target.item():
+            # continue
         # print(F.log_softmax(output, dim=1).exp()) #Gives one hot encoding
 
 
@@ -274,21 +276,36 @@ def infer( model, device, test_loader, epsilon ):
         data_grad = data.grad.data
 
         # Call FGSM Attack
-        perturbed_data, rmap = fgsm_attack(data, epsilon, data_grad, device, ID[0])
+        perturbed_data, rmap = fgsm_attack(data, epsilon, data_grad, device, ID[0], path_to_output)
 
         # Re-classify the perturbed image
         output = model(perturbed_data)
 
         # Check for success
         final_pred = F.softmax(output, dim=1).max(1, keepdim=True)[1] # get the index of the max log-probability
+        if final_pred.item() == target.item():
+            correct += 1
 
+    end = datetime.datetime.now().replace(microsecond=0)
     # print("Wrong percentage: {}".format(wrong_counter/len(test_loader)))
     # Return the accuracy and an adversarial example
+    final_acc = correct/len(test_loader)
+    print("Epsilon: {}\tTest Accuracy = {} / {} = {}\t Time elapsed: {} \n".format(epsilon, correct, len(test_loader), final_acc, end-start))
+    logfile = open("logfile.txt","a")
+    logfile.write("\nInference started at {} and finished at {}".format(start, end))
+    logfile.write("Epsilon: {}\tTest Accuracy = {} / {} = {}\t Time elapsed: {} \n".format(epsilon, correct, len(test_loader), final_acc, end-start))
+    logfile.close()
     end = datetime.datetime.now().replace(microsecond=0)
 
-    return final_acc, adv_examples
+    return end-start
 
 if __name__ == '__main__':
-    # Run test for each epsilon
-    acc, ex = infer(model, device, test_loader, EPSILON)
+    epsilons = [0.01, 0.05]
+    for epsilon in epsilons:
+        path_to_output = "../data/submissions/Insight-DCU_e{}tshift".format(epsilon)
+        if not os.path.exists(path_to_output):
+            os.mkdir(path_to_output)
+        # Run test for each epsilon
+        time = infer(model, device, test_loader, epsilon, path_to_output)
+        print("Inference done after {}".format(time))
 
