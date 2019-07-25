@@ -159,7 +159,8 @@ def fgsm_attack(image, epsilon, data_grad, device, places_id, path_to_output):
         edginess = np.transpose(edginess, (1,2,0))
         edginess = rgb2gray(edginess)
         edginess = torch.from_numpy(edginess).unsqueeze(0).unsqueeze(0)
-        utils.save_image(minmax_normalization(edginess), os.path.join("./adv_example", "edginess.png"))
+        # utils.save_image(minmax_normalization(edginess), os.path.join("./adv_example", "edginess.png"))
+        utils.save_image(minmax_normalization(edginess), "./adv_example/rmaps/edginess_e{}_{}".format(epsilon, places_id))
         edginess = minmax_normalization(edginess) #bring to 0-1 scale
         edginess = edginess.type(torch.FloatTensor).to(device)
         # rmap_noflat[edginess<edginess.mean()+abs(edginess.mean()/2)]=0 # Black out flat surfaces
@@ -168,23 +169,30 @@ def fgsm_attack(image, epsilon, data_grad, device, places_id, path_to_output):
 
         perturbed_image = image + epsilon*sign_data_grad*rmap_noflat
         utils.save_image(minmax_normalization(rmap), rmap_path)
+        utils.save_image(minmax_normalization(rmap), "./adv_example/rmaps/rmap_e{}_{}".format(epsilon, places_id))
     else:
         rmap = None
         perturbed_image = image + epsilon*sign_data_grad
 
-    perturbed_path = os.path.join(path_to_output, "Insight-DCU_e{}tshift_{}".format(epsilon, places_id))
-    utils.save_image(minmax_normalization(perturbed_image), perturbed_path)
 
     # utils.save_image(minmax_normalization(image), os.path.join("./adv_example", "original.png"))
     # perturbed_image = torch.clamp(perturbed_image, -2, 2) # Changed to 95% confidence interval
     # Return the perturbed image
     if TILTSHIFT:
+        perturbed_path = os.path.join("./adv_example/temp.jpg")
+        utils.save_image(minmax_normalization(perturbed_image), perturbed_path)
+
         perturbed_image = tiltshift(perturbed_path, rmap_path)
         perturbed_image = perturbed_image.convert('RGB') # important to add, By default PIL is agnostic about color spaces: https://stackoverflow.com/questions/50622180/does-pil-image-convertrgb-converts-images-to-srgb-or-adobergb/50623824
         perturbed_image = transform_pipeline(perturbed_image)
         perturbed_image = perturbed_image.unsqueeze(0)
         perturbed_image = perturbed_image.to(device)
-        utils.save_image(minmax_normalization(perturbed_image), os.path.join("./adv_example", "blurred.png"))
+
+        perturbed_path = os.path.join(path_to_output, "Insight-DCU_e{}tshift_{}".format(epsilon, places_id))
+        utils.save_image(minmax_normalization(perturbed_image), perturbed_path)
+    else:
+        perturbed_path = os.path.join(path_to_output, "Insight-DCU_e{}_{}".format(epsilon, places_id))
+        utils.save_image(minmax_normalization(perturbed_image), perturbed_path)
     # to_pil = transforms.ToPILImage()
     # to_tensor = transforms.ToTensor()
     # perturbed_image = to_tensor(tiltshift(to_pil(perturbed_image.squeeze()))).unsqueeze()
@@ -236,7 +244,6 @@ def infer( model, device, test_loader, epsilon, path_to_output):
     # Accuracy counter
     correct = 0
     wrong_counter = 0
-    adv_examples, original_aesthetics, final_aesthetics = [], [], []
 
     print("Initiating test with epsilon {} and tiltshift set to {}".format(epsilon, TILTSHIFT))
     # Loop over all examples in test set
@@ -293,9 +300,8 @@ def infer( model, device, test_loader, epsilon, path_to_output):
     print("Epsilon: {}\tTest Accuracy = {} / {} = {}\t Time elapsed: {} \n".format(epsilon, correct, len(test_loader), final_acc, end-start))
     logfile = open("logfile.txt","a")
     logfile.write("\nInference started at {} and finished at {}".format(start, end))
-    logfile.write("Epsilon: {}\tTest Accuracy = {} / {} = {}\t Time elapsed: {} \n".format(epsilon, correct, len(test_loader), final_acc, end-start))
+    logfile.write("Epsilon: {}\tTilt-shift set to {}\nTest Accuracy = {} / {} = {}\t Time elapsed: {} \n".format(epsilon, TILTSHIFT, correct, len(test_loader), final_acc, end-start))
     logfile.close()
-    end = datetime.datetime.now().replace(microsecond=0)
 
     return end-start
 

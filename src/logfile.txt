@@ -52,3 +52,30 @@ Original/Final Avg of Aesthetics: 4.218029975891113/4.2001872062683105
 Inference started at 2019-07-19 14:49:44 and finished at 2019-07-19 15:14:33Epsilon: 0.01	Test Accuracy = 310 / 600 = 0.5166666666666667	 Time elapsed: 0:24:49
 
 Inference started at 2019-07-19 15:14:33 and finished at 2019-07-19 15:39:11Epsilon: 0.05	Test Accuracy = 182 / 600 = 0.30333333333333334	 Time elapsed: 0:24:38
+
+Inference started at 2019-07-19 16:18:20 and finished at 2019-07-19 16:43:25Epsilon: 0.01	Test Accuracy = 409 / 600 = 0.6816666666666666	 Time elapsed: 0:25:05
+
+Inference started at 2019-07-19 16:43:25 and finished at 2019-07-19 17:07:46Epsilon: 0.05	Test Accuracy = 332 / 600 = 0.5533333333333333	 Time elapsed: 0:24:21
+
+Inference started at 2019-07-22 10:19:04 and finished at 2019-07-22 10:43:46Epsilon: 0.05	Test Accuracy = 182 / 600 = 0	 Time elapsed: 0:24:42
+
+Inference started at 2019-07-22 11:51:02 and finished at 2019-07-22 12:15:29Epsilon: 0.05	Test Accuracy = 182 / 600 = 0.30333333333333334	 Time elapsed: 0:24:27
+
+Inference started at 2019-07-22 13:31:25 and finished at 2019-07-22 13:56:51Epsilon: 0.01	Tilt-shift set to True
+Test Accuracy = 409 / 600 = 0.6816666666666666	 Time elapsed: 0:25:26
+
+Inference started at 2019-07-22 13:56:51 and finished at 2019-07-22 14:20:51Epsilon: 0.05	Tilt-shift set to True
+Test Accuracy = 332 / 600 = 0.5533333333333333	 Time elapsed: 0:24:00
+
+Inference started at 2019-07-23 14:47:45 and finished at 2019-07-23 15:16:50Epsilon: 0.01	Tilt-shift set to True
+Test Accuracy = 409 / 600 = 0.6816666666666666	 Time elapsed: 0:29:05
+
+Inference started at 2019-07-23 15:33:40 and finished at 2019-07-23 15:34:58
+
+COUPLED OPTIMIZATION:
+Inference started at 2019-07-23 15:38:24 and finished at 2019-07-23 15:40:03Epsilon: 0.01
+Test Accuracy = 158 / 600 = 0.2633333333333333	 Time elapsed: 0:01:39
+
+Inference started at 2019-07-23 15:40:03 and finished at 2019-07-23 15:41:42Epsilon: 0.05
+Test Accuracy = 51 / 600 = 0.085	 Time elapsed: 0:01:39
+Epsilon: 0	Test Accuracy = 1495 / 3000 = 0.49833333333333335	 Time elapsed: 0:09:16

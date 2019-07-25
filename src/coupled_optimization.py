@@ -1,6 +1,7 @@
 # Implementation of the attack. Note that the original code was borrowed from PyTorch tutorials and build upon for the purposes of this project.
 
 from __future__ import print_function
+import pickle
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -64,7 +65,7 @@ def load_weights(pt_model, device='cpu'):
 #
 
 
-epsilons = [0, .05, .1, .15] #, .2, .25, .3]
+epsilons = [0, .01 , .025, .05] #, .2, .25, .3]
 pretrained_model = "./models/resnet50_places365.pth.tar"
 use_cuda = True
 
@@ -84,7 +85,7 @@ transform_pipeline = transforms.Compose([
         transforms.Normalize(mean=[0.485, 0.456, 0.406],
                              std=[0.229, 0.224, 0.225])
     ])
-dataset = datasets.Places365(path_to_data=PATH_TO_DATA, path_to_labels=PATH_TO_LABELS, list_IDs = os.listdir(PATH_TO_DATA), transform=transform_pipeline)
+dataset = datasets.Places365(path_to_data=PATH_TO_DATA, path_to_labels=PATH_TO_LABELS, transform=transform_pipeline)
 test_loader = torch.utils.data.DataLoader(
             dataset=dataset,
             batch_size=BATCH_SIZE,
@@ -193,7 +194,7 @@ def test( attack_model, device, test_loader, epsilon ):
     aesthetics_goal[-1] = 1 #Last index means score 10
     aesthetics_goal = aesthetics_goal.to(device)
     # Loop over all examples in test set
-    for i, (data, target) in enumerate(test_loader):
+    for i, (data, target, ID) in enumerate(test_loader):
 
         # Send the data and label to the device
         data, target = data.to(device), target.to(device)
@@ -323,14 +324,20 @@ for eps in epsilons:
 # `\epsilon=0.25` and `\epsilon=0.3`.
 #
 
+to_plot = {
+        'accuracies': accuracies,
+        }
+with open('to_plot.pkl', 'wb') as handle:
+    pickle.dump(to_plot, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
 plt.figure(figsize=(5,5))
 plt.plot(epsilons, accuracies, "*-")
 plt.yticks(np.arange(0, 1.1, step=0.1))
 plt.xticks(np.arange(epsilons[0], epsilons[-1], step=epsilons[1]-epsilons[0]))
-plt.title("Accuracy vs Epsilon")
+plt.title("Coupled Optimization")
 plt.xlabel("Epsilon")
 plt.ylabel("Accuracy")
-plt.savefig("Epsilons.png")
+plt.savefig("Epsilons-copt.png")
 # plt.show()
 
 
