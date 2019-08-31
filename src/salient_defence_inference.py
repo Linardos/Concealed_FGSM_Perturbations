@@ -21,7 +21,7 @@ torch.manual_seed(10) # original test: 20
 
 
 ROOT_PATH = "/home/linardos/Documents/pPrivacy"
-PATH_TO_DATA = "../data/Places365/val_large"
+PATH_TO_DATA = "../data/Places365/val_256"
 PATH_TO_LABELS = "../data/Places365/places365_val.txt"
 
 list_IDs = [line.rstrip('\n') for line in open("../data/Places365/MEPP19test.csv")]
