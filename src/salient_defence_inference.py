@@ -26,8 +26,12 @@ PATH_TO_LABELS = "../data/Places365/places365_val.txt"
 
 list_IDs = [line.rstrip('\n') for line in open("../data/Places365/MEPP19test.csv")]
 BATCH_SIZE = 1
-TILTSHIFT = True
+TILTSHIFT = False
 USE_MAP = True
+
+pretrained_model = "./models/resnet50_places365.pth.tar"
+use_cuda = False
+
 
 ######################################################################
 # Utility functions
@@ -50,35 +54,6 @@ def load_weights(pt_model, device='cpu'):
 
     return checkpoint
 
-
-# ====================
-
-# modules = list(model.children())[:-1] # The last layer is not compatible.
-# print(checkpoint['state_dict'].keys())
-# print(model.state_dict().keys())
-
-
-######################################################################
-# Implementation
-# --------------
-#
-# Inputs
-# ~~~~~~
-#
-# -  **epsilons** - List of epsilon values to use for the run. It is
-#    important to keep 0 in the list because it represents the model
-#    performance on the original test set. Also, intuitively we would
-#    expect the larger the epsilon, the more noticeable the perturbations
-#    but the more effective the attack in terms of degrading model
-#    accuracy. Since the data range here is `[0,1]`, no epsilon
-#    value should exceed 1.
-#
-
-
-# epsilons = [.01] #, .2, .25, .3]
-# epsilons = [.15] #, .2, .25, .3]
-pretrained_model = "./models/resnet50_places365.pth.tar"
-use_cuda = True
 
 
 ######################################################################
@@ -109,7 +84,9 @@ device = torch.device("cuda" if (use_cuda and torch.cuda.is_available()) else "c
 
 # Initialize the network and load the weights
 model = models.resnet50(pretrained=False)
+model.avgpool = nn.AdaptiveAvgPool2d((1, 1))
 model.fc = nn.Linear(2048, 365) # To be made compatible to 365 number of classes instead of the original 1000
+# model.fc = nn.Linear(8192, 365) # To be made compatible to 365 number of classes instead of the original 1000
 model.to(device)
 checkpoint = load_weights(pretrained_model, device = device)
 model.load_state_dict(checkpoint)
@@ -252,7 +229,6 @@ def infer( model, device, test_loader, epsilon, path_to_output):
         data, target = data.to(device), target.to(device)
         # Set requires_grad attribute of tensor. Important for Attack
         data.requires_grad = True
-
         # Forward pass the data through the model
         output = model(data)
         init_pred = F.softmax(output, dim=1)
@@ -308,7 +284,11 @@ def infer( model, device, test_loader, epsilon, path_to_output):
 if __name__ == '__main__':
     epsilons = [0.01, 0.05]
     for epsilon in epsilons:
-        path_to_output = "../data/submissions/Insight-DCU_e{}tshift".format(epsilon)
+        if TILTSHIFT:
+            path_to_output = "../data/submissions/Insight-DCU_e{}tshift".format(epsilon)
+        else:
+            path_to_output = "../data/submissions/Insight-DCU_e{}".format(epsilon)
+
         if not os.path.exists(path_to_output):
             os.mkdir(path_to_output)
         # Run test for each epsilon
