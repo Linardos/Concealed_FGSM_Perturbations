@@ -26,7 +26,7 @@ PATH_TO_LABELS = "../data/Places365/places365_val.txt"
 
 list_IDs = [line.rstrip('\n') for line in open("../data/Places365/MEPP19test.csv")]
 BATCH_SIZE = 1
-TILTSHIFT = False
+TILTSHIFT = True
 USE_MAP = True
 
 pretrained_model = "./models/resnet50_places365.pth.tar"

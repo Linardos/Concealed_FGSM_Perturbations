@@ -20,11 +20,13 @@ from collections import OrderedDict
 torch.manual_seed(10)
 
 ROOT_PATH = "/home/linardos/Documents/pPrivacy"
-PATH_TO_DATA = "../data/Places365/val_large"
+PATH_TO_DATA = "../data/Places365/val_256"
 PATH_TO_LABELS = "../data/Places365/places365_val.txt"
 list_IDs = [line.rstrip('\n') for line in open("../data/Places365/MEPP19test.csv")]
 BATCH_SIZE = 1
 COUPLED = True
+pretrained_model = "./models/resnet50_places365.pth.tar"
+use_cuda = False
 ######################################################################
 # Utility functions
 # --------------
@@ -47,25 +49,6 @@ def load_weights(pt_model, device='cpu'):
     return checkpoint
 
 
-######################################################################
-# Implementation
-# --------------
-#
-# Inputs
-# ~~~~~~
-#
-# -  **epsilons** - List of epsilon values to use for the run. It is
-#    important to keep 0 in the list because it represents the model
-#    performance on the original test set. Also, intuitively we would
-#    expect the larger the epsilon, the more noticeable the perturbations
-#    but the more effective the attack in terms of degrading model
-#    accuracy. Since the data range here is `[0,1]`, no epsilon
-#    value should exceed 1.
-#
-
-
-pretrained_model = "./models/resnet50_places365.pth.tar"
-use_cuda = True
 
 
 ######################################################################
@@ -96,6 +79,7 @@ device = torch.device("cuda" if (use_cuda and torch.cuda.is_available()) else "c
 
 # Initialize the network and load the weights
 attack_model = models.resnet50(pretrained=False)
+attack_model.avgpool = nn.AdaptiveAvgPool2d((1, 1))
 attack_model.fc = nn.Linear(2048, 365) # To be made compatible to 365 number of classes instead of the original 1000
 attack_model.to(device)
 checkpoint = load_weights(pretrained_model, device = device)
@@ -115,9 +99,9 @@ base_model = models.vgg16(pretrained=False)
 # old_model.load_state_dict(torch.load("./NIMA/epoch-12.pkl"))
 
 aesthetics_model = NIMA(base_model)
-aesthetics_model.load_state_dict(torch.load("./NIMA/epoch-12.pkl"))
-
 aesthetics_model.to(device)
+aesthetics_model.load_state_dict(torch.load("./NIMA/epoch-57.pkl", map_location='cpu'))
+
 aesthetics_model.eval()
 
 ######################################################################

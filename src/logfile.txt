@@ -79,3 +79,18 @@ Test Accuracy = 158 / 600 = 0.2633333333333333	 Time elapsed: 0:01:39
 Inference started at 2019-07-23 15:40:03 and finished at 2019-07-23 15:41:42Epsilon: 0.05
 Test Accuracy = 51 / 600 = 0.085	 Time elapsed: 0:01:39
 Epsilon: 0	Test Accuracy = 1495 / 3000 = 0.49833333333333335	 Time elapsed: 0:09:16
+
+Inference started at 2019-08-31 16:01:27 and finished at 2019-08-31 17:17:57Epsilon: 0.01	Tilt-shift set to False
+Test Accuracy = 503 / 600 = 0.8383333333333334	 Time elapsed: 1:16:30 
+
+Inference started at 2019-08-31 17:17:57 and finished at 2019-08-31 18:32:45Epsilon: 0.05	Tilt-shift set to False
+Test Accuracy = 335 / 600 = 0.5583333333333333	 Time elapsed: 1:14:48 
+
+Inference started at 2019-08-31 20:36:39 and finished at 2019-08-31 21:51:03Epsilon: 0.01	Tilt-shift set to True
+Test Accuracy = 541 / 600 = 0.9016666666666666	 Time elapsed: 1:14:24 
+
+Inference started at 2019-08-31 21:51:03 and finished at 2019-08-31 22:58:24Epsilon: 0.05	Tilt-shift set to True
+Test Accuracy = 493 / 600 = 0.8216666666666667	 Time elapsed: 1:07:21 
+
+Inference started at 2019-09-01 01:40:25 and finished at 2019-09-01 02:15:02Epsilon: 0.01
+Test Accuracy = 379 / 600 = 0.6316666666666667	 Time elapsed: 0:34:37 
