@@ -20,7 +20,7 @@ from PIL import Image
 torch.manual_seed(10) # original test: 20
 
 ROOT_PATH = "/home/linardos/Documents/pPrivacy"
-PATH_TO_DATA = "../data/Places365/val_large"
+PATH_TO_DATA = "../data/Places365/val_256"
 PATH_TO_LABELS = "../data/Places365/places365_val.txt"
 PATH_TO_LABELS = "../data/Places365/MEPP18val.csv"
 BATCH_SIZE = 1
@@ -107,6 +107,7 @@ device = torch.device("cuda" if (use_cuda and torch.cuda.is_available()) else "c
 
 # Initialize the network and load the weights
 model = models.resnet50(pretrained=False)
+model.avgpool = nn.AdaptiveAvgPool2d((1, 1))
 model.fc = nn.Linear(2048, 365) # To be made compatible to 365 number of classes instead of the original 1000
 model.to(device)
 checkpoint = load_weights(pretrained_model, device = device)
@@ -126,7 +127,7 @@ base_model = models.vgg16(pretrained=False)
 # old_model.load_state_dict(torch.load("./NIMA/epoch-12.pkl"))
 
 aesthetics_model = NIMA(base_model)
-aesthetics_model.load_state_dict(torch.load("./NIMA/epoch-12.pkl"))
+aesthetics_model.load_state_dict(torch.load("./NIMA/epoch-57.pkl", map_location=device))
 
 aesthetics_model.to(device)
 aesthetics_model.eval()
@@ -245,11 +246,12 @@ def test( model, device, test_loader, epsilon ):
     correct = 0
     wrong_counter = 0
     adv_examples, original_aesthetics, final_aesthetics = [], [], []
-
+    num_samples = 100#len(test_loader)
     print("Initiating test with epsilon {} and tiltshift set to {}".format(epsilon, TILTSHIFT))
     # Loop over all examples in test set
     for i, (data, target, ID) in enumerate(test_loader):
-
+        if i == num_samples:
+            break
         # Send the data and label to the device
         data, target = data.to(device), target.to(device)
         # Set requires_grad attribute of tensor. Important for Attack
@@ -260,14 +262,6 @@ def test( model, device, test_loader, epsilon ):
         init_pred = F.softmax(output, dim=1)
         init_pred = init_pred.max(1, keepdim=True)[1] # get the index of the max log-probability
 
-        #print(target)
-        #print(init_pred)
-        # exit()
-        # print(init_pred)
-        # exit()
-        # print(F.log_softmax(output, dim=1))
-        # target = torch.LongTensor([2]).to('cuda')
-        # If the initial prediction is wrong, dont bother attacking, just move on
         if init_pred.item() != target.item():
             continue
         # print(F.log_softmax(output, dim=1).exp()) #Gives one hot encoding
@@ -328,18 +322,18 @@ def test( model, device, test_loader, epsilon ):
         # print(predicted_mean_before)
 
     # Calculate final accuracy for this epsilon
-    final_acc = correct/float(len(test_loader))
+    final_acc = correct/float(num_samples)
     original_aes_score = np.mean(original_aesthetics)
     final_aes_score = np.mean(final_aesthetics)
 
-    # print("Wrong percentage: {}".format(wrong_counter/len(test_loader)))
+    # print("Wrong percentage: {}".format(wrong_counter/num_samples))
     # Return the accuracy and an adversarial example
     end = datetime.datetime.now().replace(microsecond=0)
 
-    print("Epsilon: {}\tTest Accuracy = {} / {} = {}\t Time elapsed: {}".format(epsilon, correct, len(test_loader), final_acc, end-start))
+    print("Epsilon: {}\tTest Accuracy = {} / {} = {}\t Time elapsed: {}".format(epsilon, correct, num_samples, final_acc, end-start))
     print("Original/Final Avg of Aesthetics: {}/{}".format(original_aes_score, final_aes_score))
     logfile = open("logfile.txt","a")
-    logfile.write("Epsilon: {}\tTest Accuracy = {} / {} = {}\t Time elapsed: {} \n".format(epsilon, correct, len(test_loader), final_acc, end-start))
+    logfile.write("Epsilon: {}\tTest Accuracy = {} / {} = {}\t Time elapsed: {} \n".format(epsilon, correct, num_samples, final_acc, end-start))
     logfile.write("Original/Final Avg of Aesthetics: {}/{} \n".format(original_aes_score, final_aes_score))
     logfile.close()
 

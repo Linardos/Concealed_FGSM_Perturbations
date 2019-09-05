@@ -94,3 +94,11 @@ Test Accuracy = 493 / 600 = 0.8216666666666667	 Time elapsed: 1:07:21
 
 Inference started at 2019-09-01 01:40:25 and finished at 2019-09-01 02:15:02Epsilon: 0.01
 Test Accuracy = 379 / 600 = 0.6316666666666667	 Time elapsed: 0:34:37 
+Epsilon: 0.0	Test Accuracy = 54 / 100 = 0.54	 Time elapsed: 0:10:44 
+Original/Final Avg of Aesthetics: 4.410341262817383/4.4583635330200195 
+Epsilon: 0.01	Test Accuracy = 53 / 100 = 0.53	 Time elapsed: 0:11:39 
+Original/Final Avg of Aesthetics: 4.433838367462158/4.49097204208374 
+Epsilon: 0.025	Test Accuracy = 48 / 100 = 0.48	 Time elapsed: 0:11:49 
+Original/Final Avg of Aesthetics: 4.406125068664551/4.4319844245910645 
+Epsilon: 0.05	Test Accuracy = 50 / 100 = 0.5	 Time elapsed: 0:13:31 
+Original/Final Avg of Aesthetics: 4.397907257080078/4.40149450302124 

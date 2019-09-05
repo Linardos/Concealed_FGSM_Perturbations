@@ -17,7 +17,11 @@ class Places365(data.Dataset):
         self.d = {} #dictionary to match label to image
         with open(path_to_labels) as f:
             for line in f:
-                (key, val) = line.split() # switch to "," or ""if you get error
+                try:
+                    (key, val) = line.split() # switch to "," or ""if you get error
+                except ValueError:
+                    (key, val) = line.split(",") # switch to "," or ""if you get error
+
                 val = val.replace('\n', "")
                 key = key.replace('"', "")
                 val = val.replace('"', "")

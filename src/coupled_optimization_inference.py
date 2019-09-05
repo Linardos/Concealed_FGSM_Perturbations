@@ -100,7 +100,7 @@ base_model = models.vgg16(pretrained=False)
 
 aesthetics_model = NIMA(base_model)
 aesthetics_model.to(device)
-aesthetics_model.load_state_dict(torch.load("./NIMA/epoch-57.pkl", map_location='cpu'))
+aesthetics_model.load_state_dict(torch.load("./NIMA/epoch-57.pkl", map_location=device))
 
 aesthetics_model.eval()
 
