@@ -219,7 +219,7 @@ def infer( attack_model, aesthetics_model, device, test_loader, epsilon, path_to
         if COUPLED:
             data_grad = standardization(data_grad)
             data_aesth_grad = standardization(data_aesth_grad)
-            data_grad+=data_aesth_grad
+            data_grad-=data_aesth_grad
 
         # Call FGSM Attack
         perturbed_data = fgsm_attack(data, epsilon, data_grad, device, ID[0], path_to_output)
