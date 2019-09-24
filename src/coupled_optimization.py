@@ -240,7 +240,7 @@ def test( attack_model, device, test_loader, epsilon ):
         if COUPLED:
             data_grad = standardization(data_grad)
             data_aesth_grad = standardization(data_aesth_grad)
-            data_grad+=data_aesth_grad
+            data_grad-=data_aesth_grad
 
         # Call FGSM Attack
         perturbed_data = fgsm_attack(data, epsilon, data_grad, device)
